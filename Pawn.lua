@@ -54,14 +54,28 @@ end
 
 -- helper: build an index of active scales reported by Pawn API
 local function API_ActiveIndex()
+  ensurePawnLoaded()
+  probeAPI()
   local act = {}
-  if Pawn and Pawn.AllScales and Pawn.GetName then
-    for _, scale in pairs(Pawn:AllScales()) do
-      if scale and scale.Active then
-        local name = (Pawn:GetName(scale) or ""):lower()
-        act[name] = true
-        local tag = (scale.Tag or ""):lower()
+  if type(api.GetAllInfo) == "function" then
+    for _, rec in ipairs(api.GetAllInfo() or {}) do
+      if rec and rec.Active then
+        local name = norm(rec.LocalizedName or rec.PrettyName or rec.Tag)
+        if name ~= "" then act[name] = true end
+        local tag = norm(rec.Tag or rec.Key)
         if tag ~= "" then act[tag] = true end
+      end
+    end
+  elseif type(api.GetAllScales) == "function" then
+    for k, v in pairs(api.GetAllScales() or {}) do
+      local rec = type(v)=="table" and v or nil
+      local tag = dequote(type(k)=="string" and k or (type(v)=="string" and v) or "")
+      if rec and rec.Active then
+        local name = norm((rec.LocalizedName or rec.PrettyName or
+                          (type(api.GetName)=="function" and api.GetName(tag)) or tag))
+        if name ~= "" then act[name] = true end
+        local tagl = norm(tag)
+        if tagl ~= "" then act[tagl] = true end
       end
     end
   end
@@ -91,6 +105,8 @@ end
 -- collect SavedVariable scales; mark active if SV says so OR API says so
 function SV_Scales(onlyActive)
   if onlyActive == nil then onlyActive = true end
+  ensurePawnLoaded()
+  probeAPI()
   local activeIdx = API_ActiveIndex()
   local out = {}
 
@@ -146,7 +162,7 @@ local function API_Scales()
   end
 
   if type(api.GetAllInfo) == "function" then
-    for _, rec in pairs(api.GetAllInfo() or {}) do
+    for _, rec in ipairs(api.GetAllInfo() or {}) do
       if type(rec) == "table" then
         push(dequote(rec.Tag or rec.Key or ""), rec.LocalizedName or rec.PrettyName or rec.Tag)
       end
@@ -370,15 +386,38 @@ Comparers:RegisterComparer("Pawn", {
 SLASH_XIVEPAWN1 = "/xivepawn"
 SlashCmdList["XIVEPAWN"] = function(msg)
   local sub = msg:match("^(%S+)") or ""
+  ensurePawnLoaded()
+  probeAPI()
 
   -- /xivepawn scales
   if sub == "scales" then
     echo("scales", "")
-    if Pawn and Pawn.AllScales and Pawn.GetName then
-      for _, scale in pairs(Pawn:AllScales()) do
-        local name = Pawn:GetName(scale)
-        print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s")
-          :format(scale.Tag or "—", name or "—", scale.Active and "Y" or "N"))
+    if ensurePawnLoaded() then
+      probeAPI()
+      local printed = 0
+      if type(api.GetAllInfo) == "function" then
+        for _, rec in pairs(api.GetAllInfo() or {}) do
+          if type(rec) == "table" then
+            local tag  = dequote(rec.Tag or rec.Key or "")
+            local name = rec.LocalizedName or rec.PrettyName or rec.Tag
+            print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s")
+              :format(tag ~= "" and tag or "—", name or "—", isTagVisible(tag) and "Y" or "N"))
+            printed = printed + 1
+          end
+        end
+      elseif type(api.GetAllScales) == "function" then
+        for k, v in pairs(api.GetAllScales() or {}) do
+          local tag = dequote(type(k)=="string" and k or (type(v)=="string" and v) or "")
+          local name = (type(v)=="table" and (v.LocalizedName or v.PrettyName))
+                    or (type(api.GetName)=="function" and api.GetName(tag))
+                    or tag
+          print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s")
+            :format(tag ~= "" and tag or "—", name or "—", isTagVisible(tag) and "Y" or "N"))
+          printed = printed + 1
+        end
+      end
+      if printed == 0 then
+        print("|cff66ccffXIVEquip|r Pawn API not available.")
       end
     else
       print("|cff66ccffXIVEquip|r Pawn API not available.")
@@ -389,6 +428,8 @@ SlashCmdList["XIVEPAWN"] = function(msg)
   -- /xivepawn sv
   if sub == "sv" then
     echo("sv", "")
+    ensurePawnLoaded()
+    probeAPI()
     local rows = SV_Scales(false)
     for _, r in ipairs(rows) do
       print(("|cff66ccffXIVEquip|r SV: NAME=%s TAG=%s Active=%s Visible=%s Values=%s")
@@ -409,6 +450,9 @@ SlashCmdList["XIVEPAWN"] = function(msg)
       return
     end
     local ql = q:lower()
+
+    ensurePawnLoaded()
+    probeAPI()
 
     local function dump(r)
       if r and r.values then
@@ -436,17 +480,13 @@ SlashCmdList["XIVEPAWN"] = function(msg)
     end
 
     -- 3) fallback: active provider scale via API
-    if Pawn and Pawn.AllScales and Pawn.GetName then
-      for _, scale in pairs(Pawn:AllScales()) do
-        if scale and scale.Active then
-          local name = (Pawn:GetName(scale) or ""):lower()
-          local tag  = (scale.Tag or ""):lower()
-          if name == ql or (tag ~= "" and tag == ql) then
-            print(("|cff66ccffXIVEquip|r '%s' is an active provider scale with no SV table; XIVEquip scores it via Pawn API at runtime.")
-              :format(Pawn:GetName(scale) or q))
-            return
-          end
-        end
+    for _, r in ipairs(API_Scales()) do
+        local name = (r.name or ""):lower()
+        local tag  = (r.tag or ""):lower()
+        if r.active and (name == ql or (tag ~= "" and tag == ql)) then
+        print(("|cff66ccffXIVEquip|r '%s' is an active provider scale with no SV table; XIVEquip scores it via Pawn API at runtime.")
+          :format(r.name or q))
+        return
       end
     end
 
