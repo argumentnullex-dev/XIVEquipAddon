@@ -1,0 +1,19 @@
+## Interface: 110002
+## Title: XIVEquip
+## Notes: FFXIV-style 'Equip Recommended Gear' button using Pawn when available.
+## Author: CodeNinja
+## Version: 0.1.0
+## SavedVariables: XIVEquip_Settings
+
+Localization.lua
+Logger.lua
+Hooks.lua
+Comparers.lua
+Pawn.lua
+Weapons.lua
+Gear.lua
+UI.lua
+Settings_Pawn.lua
+Settings.lua
+AutoSpecSwitcher.lua
+XIVEquip.lua
