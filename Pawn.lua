@@ -390,21 +390,32 @@ SlashCmdList["XIVEPAWN"] = function(msg)
   -- /xivepawn scales
   if sub == "scales" then
     echo("scales", "")
-    if type(api.GetAllInfo) == "function" then
-      for _, rec in ipairs(api.GetAllInfo() or {}) do
-        local tag = rec.Tag or rec.Key or "—"
-        local name = rec.LocalizedName or rec.PrettyName or tag or "—"
-        local active = rec.Active and "Y" or "N"
-        print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s"):format(tag, name, active))
+    if ensurePawnLoaded() then
+      probeAPI()
+      local printed = 0
+      if type(api.GetAllInfo) == "function" then
+        for _, rec in ipairs(api.GetAllInfo() or {}) do
+          if type(rec) == "table" then
+            local tag  = dequote(rec.Tag or rec.Key or "")
+            local name = rec.LocalizedName or rec.PrettyName or rec.Tag
+            print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s")
+              :format(tag ~= "" and tag or "—", name or "—", isTagVisible(tag) and "Y" or "N"))
+            printed = printed + 1
+          end
+        end
+      elseif type(api.GetAllScales) == "function" then
+        for k, v in pairs(api.GetAllScales() or {}) do
+          local tag = dequote(type(k)=="string" and k or (type(v)=="string" and v) or "")
+          local name = (type(v)=="table" and (v.LocalizedName or v.PrettyName))
+                    or (type(api.GetName)=="function" and api.GetName(tag))
+                    or tag
+          print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s")
+            :format(tag ~= "" and tag or "—", name or "—", isTagVisible(tag) and "Y" or "N"))
+          printed = printed + 1
+        end
       end
-    elseif type(api.GetAllScales) == "function" then
-      for k, v in pairs(api.GetAllScales() or {}) do
-        local tag = dequote(type(k)=="string" and k or (type(v)=="string" and v) or "—")
-        local name = (type(v)=="table" and (v.LocalizedName or v.PrettyName))
-                  or (type(api.GetName)=="function" and api.GetName(tag))
-                  or tag
-        local active = (type(v)=="table" and v.Active) and "Y" or "N"
-        print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s"):format(tag, name or tag, active))
+      if printed == 0 then
+        print("|cff66ccffXIVEquip|r Pawn API not available.")
       end
     else
       print("|cff66ccffXIVEquip|r Pawn API not available.")
