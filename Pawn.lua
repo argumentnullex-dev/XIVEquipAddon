@@ -569,6 +569,50 @@ SlashCmdList["XIVEPAWN"] = function(msg)
     return
   end
 
+  -- /xivepawn score <scale> [itemLink]
+  if sub == "score" then
+    local rest = msg:sub(6) or ""
+    local scale, link = rest:match("^%s*(%S+)%s*(.*)")
+    scale = trim(scale)
+    link = trim(link)
+    echo("score", scale .. (link ~= "" and (" " .. link) or ""))
+    if scale == "" then
+      print("|cff66ccffXIVEquip|r Usage: /xivepawn score <scale> [itemLink]")
+      return
+    end
+    ensurePawnLoaded()
+    probeAPI()
+    local itemTable, itemLink
+    if link ~= "" then
+      itemLink = link
+      if type(api.GetItemData) == "function" then
+        local ok,it = pcall(api.GetItemData, link)
+        if ok and type(it) == "table" then itemTable = it end
+      end
+    else
+      itemTable, itemLink = sampleItem()
+    end
+    if not itemTable and not itemLink then
+      print("|cff66ccffXIVEquip|r No item available to score.")
+      return
+    end
+    local score
+    if itemTable and type(api.ItemValue) == "function" then
+      local ok,v = pcall(api.ItemValue, itemTable, scale)
+      if ok and type(v) == "number" then score = v end
+    end
+    if not score and itemLink and type(api.SingleFor) == "function" then
+      local ok,v = pcall(api.SingleFor, itemLink, scale)
+      if ok and type(v) == "number" then score = v end
+    end
+    if score then
+      print(("|cff66ccffXIVEquip|r Score[%s] = %s"):format(scale, score))
+    else
+      print(("|cff66ccffXIVEquip|r Unable to score scale '%s'."):format(scale))
+    end
+    return
+  end
+
   -- default help
-  print("|cff66ccffXIVEquip|r Usage: /xivepawn <scales | sv | weights <name>>")
+  print("|cff66ccffXIVEquip|r Usage: /xivepawn <scales | sv | weights <name> | score <scale>>")
 end
