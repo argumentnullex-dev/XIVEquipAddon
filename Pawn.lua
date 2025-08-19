@@ -122,10 +122,11 @@ function SV_Scales(onlyActive)
     local tag    = s.Key or s.Tag
     local values = (type(s.Values) == "table") and s.Values or nil
 
-    local svActive = (s.Active == "Y") or (s.Active == true)
-    local byName   = name and activeIdx[(name or ""):lower()]
-    local byTag    = tag and tag ~= "" and activeIdx[(tag or ""):lower()]
-    local active   = svActive or byName or byTag or false
+    local svActive  = (s.Active == "Y") or (s.Active == true)
+    local svVisible = (s.Visible == true)
+    local byName    = name and activeIdx[(name or ""):lower()]
+    local byTag     = tag and tag ~= "" and activeIdx[(tag or ""):lower()]
+    local active    = svActive or byName or byTag or svVisible
 
     if (not onlyActive) or active then
       table.insert(out, {
@@ -133,7 +134,7 @@ function SV_Scales(onlyActive)
         tag     = tag,
         values  = values,
         active  = active,
-        visible = (s.Visible == true),
+        visible = svVisible,
         _raw    = s,
       })
     end
