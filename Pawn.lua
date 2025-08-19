@@ -465,31 +465,60 @@ SlashCmdList["XIVEPAWN"] = function(msg)
       end
     end
 
+    local svActive  = SV_Scales(true)
+    local apiActive = API_Scales()
+
     -- 1) exact match (active SV scales)
-    for _, r in ipairs(SV_Scales(true)) do
+    for _, r in ipairs(svActive) do
       local n = (r.name or ""):lower()
       local t = (r.tag or ""):lower()
       if (n == ql or (t ~= "" and t == ql)) and dump(r) then return end
     end
 
     -- 2) substring match (active SV scales)
-    for _, r in ipairs(SV_Scales(true)) do
+    for _, r in ipairs(svActive) do
       local n = (r.name or ""):lower()
       local t = (r.tag or ""):lower()
       if (n:find(ql, 1, true) or (t ~= "" and t:find(ql, 1, true))) and dump(r) then return end
     end
 
-    -- 3) fallback: active provider scale via API
-    for _, r in ipairs(API_Scales()) do
-        local name = (r.name or ""):lower()
-        local tag  = (r.tag or ""):lower()
-        if r.active and (name == ql or (tag ~= "" and tag == ql)) then
-        print(("|cff66ccffXIVEquip|r '%s' is an active provider scale with no SV table; XIVEquip scores it via Pawn API at runtime.")
-          :format(r.name or q))
+    -- 3) exact match (active provider scales via API)
+    for _, r in ipairs(apiActive) do
+      local n = (r.name or ""):lower()
+      local t = (r.tag or ""):lower()
+      if n == ql or (t ~= "" and t == ql) then
+        for _, sv in ipairs(svActive) do
+          local sn = (sv.name or ""):lower()
+          local st = (sv.tag or ""):lower()
+          if sn == n or (st ~= "" and st == t) then
+            if dump(sv) then return end
+          end
+        end
+        print(("|cff66ccffXIVEquip|r '%s' is an active provider scale with no SV table; " ..
+               "XIVEquip scores it via Pawn API at runtime.")
+          :format(r.name or r.tag or q))
         return
       end
     end
 
+    -- 4) substring match (active provider scales via API)
+    for _, r in ipairs(apiActive) do
+      local n = (r.name or ""):lower()
+      local t = (r.tag or ""):lower()
+      if n:find(ql, 1, true) or (t ~= "" and t:find(ql, 1, true)) then
+        for _, sv in ipairs(svActive) do
+          local sn = (sv.name or ""):lower()
+          local st = (sv.tag or ""):lower()
+          if sn == n or (st ~= "" and st == t) then
+            if dump(sv) then return end
+          end
+        end
+        print(("|cff66ccffXIVEquip|r '%s' is an active provider scale with no SV table; " ..
+               "XIVEquip scores it via Pawn API at runtime.")
+          :format(r.name or r.tag or q))
+        return
+      end
+    end
     print("|cff66ccffXIVEquip|r No scale matched:", q)
     return
   end
