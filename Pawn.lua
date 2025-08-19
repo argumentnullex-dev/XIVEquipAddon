@@ -464,7 +464,7 @@ SlashCmdList["XIVEPAWN"] = function(msg)
         rows[#rows+1] = {
           name         = r.name,
           tag          = r.tag,
-          values       = nil,
+          values       = r.values,
           active       = r.active,
           visible      = true,
           providerOnly = true,
@@ -473,12 +473,13 @@ SlashCmdList["XIVEPAWN"] = function(msg)
     end
 
     for _, r in ipairs(rows) do
-      print(("|cff66ccffXIVEquip|r SV: NAME=%s TAG=%s Active=%s Visible=%s Values=%s ProviderOnly=%s")
+      print(("|cff66ccffXIVEquip|r SV: NAME=%s TAG=%s Active=%s Visible=%s Values=%s ProviderOnly=%s ProviderValues=%s")
         :format(r.name or "—", r.tag or "—",
                 r.active and "Y" or "N",
                 r.visible and "Y" or "N",
                 r.values and "Y" or "N",
-                r.providerOnly and "Y" or "N"))
+                r.providerOnly and "Y" or "N",
+                (r.providerOnly and r.values) and "Y" or "N"))
     end
     return
   end
