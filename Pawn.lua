@@ -60,18 +60,23 @@ local function API_ActiveIndex()
   local act = {}
   if type(api.GetAllInfo) == "function" then
     for _, rec in ipairs(api.GetAllInfo() or {}) do
-      if rec and rec.Active then
-        local name = norm(rec.LocalizedName or rec.PrettyName or rec.Tag)
-        if name ~= "" then act[name] = true end
-        local tag = norm(rec.Tag or rec.Key)
-        if tag ~= "" then act[tag] = true end
+      if rec then
+        local rawTag = rec.Tag or rec.Key
+        local active = rec.Active or rec.Visible or isTagVisible(rawTag)
+        if active then
+          local name = norm(rec.LocalizedName or rec.PrettyName or rawTag)
+          if name ~= "" then act[name] = true end
+          local tag = norm(rawTag)
+          if tag ~= "" then act[tag] = true end
+        end
       end
     end
   elseif type(api.GetAllScales) == "function" then
     for k, v in pairs(api.GetAllScales() or {}) do
       local rec = type(v)=="table" and v or nil
       local tag = dequote(type(k)=="string" and k or (type(v)=="string" and v) or "")
-      if rec and rec.Active then
+      local active = rec and (rec.Active or rec.Visible or isTagVisible(tag))
+      if active then
         local name = norm((rec.LocalizedName or rec.PrettyName or
                           (type(api.GetName)=="function" and api.GetName(tag)) or tag))
         if name ~= "" then act[name] = true end
