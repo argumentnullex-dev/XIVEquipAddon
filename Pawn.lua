@@ -42,9 +42,10 @@ local function trim(s) return (tostring(s or ""):gsub("^%s+",""):gsub("%s+$","")
 local function norm(s) return trim(s):lower() end
 local function dequote(s) s = tostring(s or "") return (s:gsub('^"(.*)"$', "%1")) end
 
--- helper to print which command was run (for parseable logs)
 local function echo(cmd, arg)
-  if arg and arg ~= "" then
+  cmd = tostring(cmd or "")
+  arg = tostring(arg or "")
+  if arg ~= "" then
     print(("|cff66ccffXIVEquip|r [/xivepawn %s %s]"):format(cmd, arg))
   else
     print(("|cff66ccffXIVEquip|r [/xivepawn %s]"):format(cmd))
