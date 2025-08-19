@@ -126,7 +126,8 @@ function SV_Scales(onlyActive)
     local svVisible = (s.Visible == true)
     local byName    = name and activeIdx[(name or ""):lower()]
     local byTag     = tag and tag ~= "" and activeIdx[(tag or ""):lower()]
-    local active    = svActive or byName or byTag or svVisible
+    local visible   = svVisible or isTagVisible(tag)
+    local active    = svActive or byName or byTag or visible
 
     if (not onlyActive) or active then
       table.insert(out, {
@@ -134,7 +135,7 @@ function SV_Scales(onlyActive)
         tag     = tag,
         values  = values,
         active  = active,
-        visible = svVisible,
+        visible = visible,
         _raw    = s,
       })
     end
