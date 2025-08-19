@@ -58,7 +58,7 @@ local function API_ActiveIndex()
   probeAPI()
   local act = {}
   if type(api.GetAllInfo) == "function" then
-    for _, rec in pairs(api.GetAllInfo() or {}) do
+    for _, rec in ipairs(api.GetAllInfo() or {}) do
       if rec and rec.Active then
         local name = norm(rec.LocalizedName or rec.PrettyName or rec.Tag)
         if name ~= "" then act[name] = true end
@@ -160,7 +160,7 @@ local function API_Scales()
   end
 
   if type(api.GetAllInfo) == "function" then
-    for _, rec in pairs(api.GetAllInfo() or {}) do
+    for _, rec in ipairs(api.GetAllInfo() or {}) do
       if type(rec) == "table" then
         push(dequote(rec.Tag or rec.Key or ""), rec.LocalizedName or rec.PrettyName or rec.Tag)
       end
@@ -391,7 +391,7 @@ SlashCmdList["XIVEPAWN"] = function(msg)
   if sub == "scales" then
     echo("scales", "")
     if type(api.GetAllInfo) == "function" then
-      for _, rec in pairs(api.GetAllInfo() or {}) do
+      for _, rec in ipairs(api.GetAllInfo() or {}) do
         local tag = rec.Tag or rec.Key or "—"
         local name = rec.LocalizedName or rec.PrettyName or tag or "—"
         local active = rec.Active and "Y" or "N"
