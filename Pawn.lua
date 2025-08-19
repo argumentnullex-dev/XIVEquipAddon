@@ -160,18 +160,27 @@ end
 local function API_Scales()
   local out = {}
 
-  local function push(tag, name)
+  local function push(tag, name, values)
     tag  = tostring(tag or "")
     name = tostring(name or "")
     if (tag ~= "" or name ~= "") and isTagVisible(tag) then
-      table.insert(out, { tag = tag, name = name, active = true })
+      table.insert(out, {
+        tag    = tag,
+        name   = name,
+        values = type(values) == "table" and values or nil,
+        active = true,
+      })
     end
   end
 
   if type(api.GetAllInfo) == "function" then
     for _, rec in ipairs(api.GetAllInfo() or {}) do
       if type(rec) == "table" then
-        push(dequote(rec.Tag or rec.Key or ""), rec.LocalizedName or rec.PrettyName or rec.Tag)
+        push(
+          dequote(rec.Tag or rec.Key or ""),
+          rec.LocalizedName or rec.PrettyName or rec.Tag,
+          rec.Values
+        )
       end
     end
   elseif type(api.GetAllScales) == "function" then
@@ -180,7 +189,8 @@ local function API_Scales()
       local name = (type(v)=="table" and (v.LocalizedName or v.PrettyName))
                 or (type(api.GetName)=="function" and api.GetName(tag))
                 or tag
-      push(tag, name)
+      local values = type(v) == "table" and v.Values or nil
+      push(tag, name, values)
     end
   end
 
@@ -526,6 +536,7 @@ SlashCmdList["XIVEPAWN"] = function(msg)
             if dump(sv) then return end
           end
         end
+        if dump(r) then return end
         print(("|cff66ccffXIVEquip|r '%s' is an active provider scale with no SV table; " ..
                "XIVEquip scores it via Pawn API at runtime.")
           :format(r.name or r.tag or q))
@@ -545,6 +556,7 @@ SlashCmdList["XIVEPAWN"] = function(msg)
             if dump(sv) then return end
           end
         end
+        if dump(r) then return end
         print(("|cff66ccffXIVEquip|r '%s' is an active provider scale with no SV table; " ..
                "XIVEquip scores it via Pawn API at runtime.")
           :format(r.name or r.tag or q))
