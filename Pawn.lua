@@ -438,12 +438,37 @@ SlashCmdList["XIVEPAWN"] = function(msg)
     ensurePawnLoaded()
     probeAPI()
     local rows = SV_Scales(false)
+
+    -- merge in visible provider scales that lack an SV table
+    local seen = {}
     for _, r in ipairs(rows) do
-      print(("|cff66ccffXIVEquip|r SV: NAME=%s TAG=%s Active=%s Visible=%s Values=%s")
+      local t = (r.tag or ""):lower()
+      local n = (r.name or ""):lower()
+      if t ~= "" then seen[t] = true end
+      if n ~= "" then seen[n] = true end
+    end
+    for _, r in ipairs(API_Scales()) do
+      local t = (r.tag or ""):lower()
+      local n = (r.name or ""):lower()
+      if not seen[t] and not seen[n] then
+        rows[#rows+1] = {
+          name         = r.name,
+          tag          = r.tag,
+          values       = nil,
+          active       = r.active,
+          visible      = true,
+          providerOnly = true,
+        }
+      end
+    end
+
+    for _, r in ipairs(rows) do
+      print(("|cff66ccffXIVEquip|r SV: NAME=%s TAG=%s Active=%s Visible=%s Values=%s ProviderOnly=%s")
         :format(r.name or "—", r.tag or "—",
                 r.active and "Y" or "N",
                 r.visible and "Y" or "N",
-                r.values and "Y" or "N"))
+                r.values and "Y" or "N",
+                r.providerOnly and "Y" or "N"))
     end
     return
   end
