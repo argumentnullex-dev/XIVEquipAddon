@@ -394,7 +394,7 @@ SlashCmdList["XIVEPAWN"] = function(msg)
       probeAPI()
       local printed = 0
       if type(api.GetAllInfo) == "function" then
-        for _, rec in ipairs(api.GetAllInfo() or {}) do
+        for _, rec in pairs(api.GetAllInfo() or {}) do
           if type(rec) == "table" then
             local tag  = dequote(rec.Tag or rec.Key or "")
             local name = rec.LocalizedName or rec.PrettyName or rec.Tag
