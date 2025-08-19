@@ -374,11 +374,32 @@ SlashCmdList["XIVEPAWN"] = function(msg)
   -- /xivepawn scales
   if sub == "scales" then
     echo("scales", "")
-    if Pawn and Pawn.AllScales and Pawn.GetName then
-      for _, scale in pairs(Pawn:AllScales()) do
-        local name = Pawn:GetName(scale)
-        print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s")
-          :format(scale.Tag or "—", name or "—", scale.Active and "Y" or "N"))
+    if ensurePawnLoaded() then
+      probeAPI()
+      local printed = 0
+      if type(api.GetAllInfo) == "function" then
+        for _, rec in pairs(api.GetAllInfo() or {}) do
+          if type(rec) == "table" then
+            local tag  = dequote(rec.Tag or rec.Key or "")
+            local name = rec.LocalizedName or rec.PrettyName or rec.Tag
+            print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s")
+              :format(tag ~= "" and tag or "—", name or "—", isTagVisible(tag) and "Y" or "N"))
+            printed = printed + 1
+          end
+        end
+      elseif type(api.GetAllScales) == "function" then
+        for k, v in pairs(api.GetAllScales() or {}) do
+          local tag = dequote(type(k)=="string" and k or (type(v)=="string" and v) or "")
+          local name = (type(v)=="table" and (v.LocalizedName or v.PrettyName))
+                    or (type(api.GetName)=="function" and api.GetName(tag))
+                    or tag
+          print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s")
+            :format(tag ~= "" and tag or "—", name or "—", isTagVisible(tag) and "Y" or "N"))
+          printed = printed + 1
+        end
+      end
+      if printed == 0 then
+        print("|cff66ccffXIVEquip|r Pawn API not available.")
       end
     else
       print("|cff66ccffXIVEquip|r Pawn API not available.")
