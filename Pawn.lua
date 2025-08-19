@@ -105,6 +105,8 @@ end
 -- collect SavedVariable scales; mark active if SV says so OR API says so
 function SV_Scales(onlyActive)
   if onlyActive == nil then onlyActive = true end
+  ensurePawnLoaded()
+  probeAPI()
   local activeIdx = API_ActiveIndex()
   local out = {}
 
@@ -426,6 +428,8 @@ SlashCmdList["XIVEPAWN"] = function(msg)
   -- /xivepawn sv
   if sub == "sv" then
     echo("sv", "")
+    ensurePawnLoaded()
+    probeAPI()
     local rows = SV_Scales(false)
     for _, r in ipairs(rows) do
       print(("|cff66ccffXIVEquip|r SV: NAME=%s TAG=%s Active=%s Visible=%s Values=%s")
@@ -446,6 +450,9 @@ SlashCmdList["XIVEPAWN"] = function(msg)
       return
     end
     local ql = q:lower()
+
+    ensurePawnLoaded()
+    probeAPI()
 
     local function dump(r)
       if r and r.values then
@@ -474,9 +481,9 @@ SlashCmdList["XIVEPAWN"] = function(msg)
 
     -- 3) fallback: active provider scale via API
     for _, r in ipairs(API_Scales()) do
-      local name = (r.name or ""):lower()
-      local tag  = (r.tag or ""):lower()
-      if r.active and (name == ql or (tag ~= "" and tag == ql)) then
+        local name = (r.name or ""):lower()
+        local tag  = (r.tag or ""):lower()
+        if r.active and (name == ql or (tag ~= "" and tag == ql)) then
         print(("|cff66ccffXIVEquip|r '%s' is an active provider scale with no SV table; XIVEquip scores it via Pawn API at runtime.")
           :format(r.name or q))
         return
