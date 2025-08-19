@@ -392,7 +392,7 @@ SlashCmdList["XIVEPAWN"] = function(msg)
 
   -- /xivepawn scales
   if sub == "scales" then
-    echo("scales")
+    echo("scales", "")
     if ensurePawnLoaded() then
       probeAPI()
       local printed = 0
@@ -428,7 +428,7 @@ SlashCmdList["XIVEPAWN"] = function(msg)
 
   -- /xivepawn sv
   if sub == "sv" then
-    echo("sv")
+    echo("sv", "")
     ensurePawnLoaded()
     probeAPI()
     local rows = SV_Scales(false)
