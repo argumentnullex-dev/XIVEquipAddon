@@ -44,10 +44,21 @@ local function policyForSpec()
     elseif spec == 72 then P.allow2H=true; P.allowDualWield=true; P.allowOffhandWeapon=true -- Fury
     elseif spec == 73 then P.allow2H=false; P.allowMH1H=true; P.allowShield=true; P.requireShield=true end -- Prot
   elseif class == "PALADIN" then
-    if spec == 65 or spec == 66 then -- Holy / Prot
-      P.allow2H=false; P.allowMH1H=true; P.allowShield=true; P.requireShield=true
-    elseif spec == 70 then -- Ret
-      P.allow2H=true; P.allowMH1H=false
+    if spec == 65 then -- Holy
+      -- Holy can use 1H + Shield OR 1H + Holdable (frill). Do not force shields.
+      P.allow2H       = false
+      P.allowMH1H     = true
+      P.allowShield   = true
+      P.allowHoldable = true
+      P.requireShield = false
+    elseif spec == 66 then -- Protection
+      P.allow2H       = false
+      P.allowMH1H     = true
+      P.allowShield   = true
+      P.requireShield = true   -- Prot must have a shield
+    elseif spec == 70 then -- Retribution
+      P.allow2H       = true
+      P.allowMH1H     = false -- you will never use just a 1H weapon as Ret
     end
   elseif class == "ROGUE" or class == "DEMONHUNTER" then
     P.allow2H=false; P.allowDualWield=true; P.allowOffhandWeapon=true
