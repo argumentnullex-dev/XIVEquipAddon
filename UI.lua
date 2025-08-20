@@ -12,6 +12,92 @@ local TEX_DISABLED = "Interface\\AddOns\\XIVEquip\\assets\\icon_white_128.tga"
 
 local btn
 
+-- Map Blizzard stat tokens -> Pawn keys and pretty text
+local STAT_TO_PAWN = {
+  ITEM_MOD_CRIT_RATING_SHORT        = { key="CritRating",      label="Crit"     },
+  ITEM_MOD_HASTE_RATING_SHORT       = { key="HasteRating",     label="Haste"    },
+  ITEM_MOD_MASTERY_RATING_SHORT     = { key="MasteryRating",   label="Mastery"  },
+  ITEM_MOD_VERSATILITY              = { key="Versatility",     label="Vers"     },
+  ITEM_MOD_LIFESTEAL_SHORT          = { key="Leech",           label="Leech"    },
+  ITEM_MOD_AVOIDANCE_RATING_SHORT   = { key="Avoidance",       label="Avoid"    },
+  ITEM_MOD_SPEED_RATING_SHORT       = { key="MovementSpeed",   label="Speed"    },
+}
+
+local GetItemStatsCompat =
+  (type(GetItemStats) == "function" and GetItemStats) or
+  (C_Item and C_Item.GetItemStats) or
+  function() return nil end
+
+local function computeStatDiff(oldLink, newLink)
+  local get = GetItemStatsCompat
+  local diff = {}
+  if not get then return diff end
+  local a = get(oldLink) or {}
+  local b = get(newLink) or {}
+  -- union of keys
+  local seen = {}
+  for k in pairs(a) do seen[k]=true end
+  for k in pairs(b) do seen[k]=true end
+
+  for k in pairs(seen) do
+    local delta = (b[k] or 0) - (a[k] or 0)
+    if delta ~= 0 then
+      diff[k] = delta
+    end
+  end
+  return diff
+end
+
+-- Optional: turn raw deltas into *weighted* deltas using a values table
+local function weightDeltas(rawDiff, values)
+  if type(values) ~= "table" then return nil end
+  local weighted, total = {}, 0
+  for blizzKey, amt in pairs(rawDiff or {}) do
+    local map = STAT_TO_PAWN[blizzKey]
+    if map then
+      local w = values[map.key]
+      if w then
+        local contrib = amt * w
+        weighted[map.key] = (weighted[map.key] or 0) + contrib
+        total = total + contrib
+      end
+    end
+  end
+  return weighted, total
+end
+
+-- Retail item level (works on links)
+local function GetIlvl(link)
+  if type(GetDetailedItemLevelInfo) == "function" then
+    local ok, v = pcall(GetDetailedItemLevelInfo, link)
+    if ok then return v end
+  end
+  local _, _, _, ilvl = GetItemInfo(link)
+  return ilvl
+end
+
+-- If PlanBest didn't populate deltas, compute them now
+local function ensureDeltas(c)
+  -- score delta (Pawn helpers from Pawn.lua)
+  if (not c.deltaScore) or c.deltaScore == 0 then
+    local newV = XIVEquip.PawnScoreLinkAuto and select(1, XIVEquip.PawnScoreLinkAuto(c.newLink))
+    local oldV = XIVEquip.PawnScoreLinkAuto and select(1, XIVEquip.PawnScoreLinkAuto(c.oldLink))
+    if oldV == nil then oldV = 0 end
+    if type(newV) == "number" and type(oldV) == "number" then
+      c.deltaScore = newV - oldV
+    end
+  end
+  -- ilvl delta
+  if (not c.deltaIlvl) or c.deltaIlvl == 0 then
+    local newI = GetIlvl(c.newLink)
+    local oldI = GetIlvl(c.oldLink)
+    if oldI == nil then oldI = 0 end
+    if type(newI) == "number" and type(oldI) == "number" then
+      c.deltaIlvl = (newI - oldI)
+    end
+  end
+end
+
 -- only silence the LOGIN banner during preview; never touch Equip prints
 local function withLoginSilenced(fn)
   local msgs = _G.XIVEquip_Settings and _G.XIVEquip_Settings.Messages
@@ -88,6 +174,18 @@ local function createButton()
   hi:SetVertexColor(1, 1, 1, 0.12)
   btn:SetHighlightTexture(hi)
 
+  -- helper to get a stable key for a *physical* item instance (GUID preferred)
+  local function instanceKeyFromChange(c)
+    if c and c.newLoc and C_Item and C_Item.GetItemGUID then
+      local ok, guid = pcall(C_Item.GetItemGUID, c.newLoc)
+      if ok and guid and guid ~= "" then return guid end
+    end
+    local id = c and c.newLink and tonumber(c.newLink:match("|Hitem:(%d+)"))
+    local bag = c and c.newLoc and c.newLoc.bagID or -1
+    local slot = c and c.newLoc and c.newLoc.slotIndex or -1
+    return table.concat({ id or 0, bag, slot }, ":")
+  end
+
   -- PREVIEW TOOLTIP (no equipping, no chat spam)
   btn:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -106,7 +204,7 @@ local function createButton()
       local cmp = XIVEquip.Comparers and XIVEquip.Comparers:StartPass()
 
       if cmp and XIVEquip.Gear and XIVEquip.Gear.PlanBest then
-        changes, pending = XIVEquip.Gear:PlanBest(cmp)
+        changes, pending = XIVEquip.Gear:PlanBest(cmp)  -- requires Gear:PlanBest to honor opts.exclude
       else
         changes, pending = {}, false
       end
@@ -127,30 +225,46 @@ local function createButton()
     if (not changes or #changes == 0) and not weaponPlan then
       GameTooltip:AddLine("|cffaaaaaaNo upgrades.|r")
     else
-      local showDetails = IsShiftKeyDown()
       for _, c in ipairs(changes or {}) do
         GameTooltip:AddLine(string.format("|cffdddddd%s|r", c.slotName or " "))
-        if showDetails and c.deltaScore then
-          local dIlvl = c.deltaIlvl or 0
-          GameTooltip:AddLine(string.format(
-            "  %s |TInterface\\Buttons\\UI-SpellbookIcon-NextPage-Up:0|t %s  |cff7fff7f+%.1f score|r  |cff7fbfff+%d ilvl|r",
-            c.oldLink or "", c.newLink or "", c.deltaScore, dIlvl))
-        else
-          GameTooltip:AddLine(string.format(
-            "  %s |TInterface\\Buttons\\UI-SpellbookIcon-NextPage-Up:0|t %s",
-            c.oldLink or "", c.newLink or ""))
+
+        -- compute deltas if missing/zero
+        ensureDeltas(c)
+
+        local dIlvl = c.deltaIlvl or 0
+        local raw   = computeStatDiff(c.oldLink, c.newLink) or {}
+        local values = c.scaleValues
+        local _, wsum = weightDeltas(raw, values)
+
+        -- main line: new link, score, ilvl
+        GameTooltip:AddLine(string.format(
+          "  %s  |cff7fff7f%+.1f score|r  |cff7fbfff%+d ilvl|r",
+          c.newLink or "", c.deltaScore or 0, dIlvl))
+
+        -- pretty-print mapped secondaries, sorted by |delta|
+        local rows = {}
+        for blizzKey, delta in pairs(raw) do
+          local map = STAT_TO_PAWN[blizzKey]
+          if map and delta ~= 0 then rows[#rows+1] = { label = map.label, d = delta } end
+        end
+        table.sort(rows, function(a,b) return math.abs(a.d) > math.abs(b.d) end)
+
+        for i, row in ipairs(rows) do
+          if i > 8 then GameTooltip:AddLine("     |cffaaaaaa(…more)|r"); break end
+          local color = row.d > 0 and "|cff7fff7f" or "|cffff3a3a"
+          GameTooltip:AddLine(string.format("     %s%+d %s|r", color, row.d, row.label))
+        end
+
+        if wsum and wsum ~= 0 then
+          local color = wsum > 0 and "|cff7fff7f" or "|cffff3a3a"
+          GameTooltip:AddLine(string.format("     %s%+.1f weighted|r", color, wsum))
         end
       end
 
       if weaponPlan then
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine("|cffddddddWeapons|r")
-        GameTooltip:AddLine("  "..weaponPlan.oldText.." |TInterface\\Buttons\\UI-SpellbookIcon-NextPage-Up:0|t "..weaponPlan.newText)
-      end
-
-      if not showDetails then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("|cff888888(Hold Shift for score/ilvl deltas)|r")
+        GameTooltip:AddLine("  " .. weaponPlan.newText) -- no arrow; proposed only
       end
     end
 

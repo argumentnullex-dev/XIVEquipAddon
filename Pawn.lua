@@ -1,618 +1,472 @@
--- Pawn.lua — XIVEquip Pawn comparer (strict scoring; SV-first; API-probed fallback)
+-- Pawn.lua — discovery-only (no comparer yet)
+-- Enumerates ACTIVE Pawn scales per-character (from SavedVariables) and prints via /xivepawn.
+-- Active means: PawnCommon.Scales[*].PerCharacterOptions["<Name>-<Realm>"].Visible == true
+
 local addonName, XIVEquip = ...
-local Comparers = XIVEquip and XIVEquip.Comparers
-if not Comparers then return end
+XIVEquip = XIVEquip or {}
 
-local Log = XIVEquip.Log or { Debug=function(...) print("|cff66ccffXIVEquip|r", ...) end,
-                               Info =function(...) print("|cff66ccffXIVEquip|r", ...) end,
-                               Warn =function(...) print("|cff66ccffXIVEquip|r [warn]", ...) end }
-local L = (XIVEquip and XIVEquip.L) or {}
-local AddonPrefix = L.AddonPrefix or "XIVEquip: "
+-- /---------- tiny logger (local chat only) ----------/
+local PREFIX = "|cff66ccffXIVEquip|r"
+local function log(...) print(PREFIX, ...) end
 
--- ---------- Pawn API wiring ----------
-local IsLoaded  = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
-local LoadAddOn = (C_AddOns and C_AddOns.LoadAddOn)    or _G.LoadAddOn
-local api = {}
+-- /---------- character key helpers ----------/
 
-local function ensurePawnLoaded()
-  if IsLoaded and IsLoaded("Pawn") then return true end
-  if LoadAddOn then pcall(LoadAddOn, "Pawn") end
-  return true
+-- returns name and realm (includes spaces)
+local function currentCharPieces()
+  local name  = UnitName("player")   -- just the char name
+  local realm = GetRealmName()       -- display realm, includes spaces
+  return name, realm
 end
 
-local function probeAPI()
-  api = {
-    GetAllInfo   = _G.PawnGetAllScaleInfo,       -- array of recs (preferred)
-    GetAllScales = _G.PawnGetAllScales,          -- map tag -> rec/string (fallback)
-    GetName      = _G.PawnGetScaleLocalizedName, -- tag -> display name
-    IsVisible    = _G.PawnIsScaleVisible,        -- tag -> boolean
-    GetItemData  = _G.PawnGetItemData,           -- link -> itemTable
-    ItemValue    = _G.PawnGetItemValue,          -- (itemTable, scaleNameDisplay)
-    SingleValue  = _G.PawnGetSingleValue,        -- (itemTable, scaleNameDisplay)
-    SingleFor    = _G.PawnGetSingleValueForItem, -- (link, scaleNameDisplay)
-  }
-  Log.Debug("Pawn API: AllInfo=",type(api.GetAllInfo)," AllScales=",type(api.GetAllScales),
-            " GetName=",type(api.GetName)," ItemValue=",type(api.ItemValue),
-            " SingleValue=",type(api.SingleValue)," SingleFor=",type(api.SingleFor),
-            " GetItemData=",type(api.GetItemData))
-end
-
--- ---------- utils ----------
-local function trim(s) return (tostring(s or ""):gsub("^%s+",""):gsub("%s+$","")) end
-local function norm(s) return trim(s):lower() end
-local function dequote(s) s = tostring(s or "") return (s:gsub('^"(.*)"$', "%1")) end
-
-local function echo(cmd, arg)
-  cmd = tostring(cmd or "")
-  arg = tostring(arg or "")
-  if arg ~= "" then
-    print(("|cff66ccffXIVEquip|r [/xivepawn %s %s]"):format(cmd, arg))
-  else
-    print(("|cff66ccffXIVEquip|r [/xivepawn %s]"):format(cmd))
+-- returns a character Key that matches how Pawn saves Character-Realm in the SV Scales
+local function buildCharKey()
+  -- If Pawn already built it, reuse (optional but nice)
+  if type(_G.PawnPlayerFullName) == "string" and _G.PawnPlayerFullName ~= "" then
+    return _G.PawnPlayerFullName
   end
+  local name, realm = currentCharPieces()
+  if not name or not realm then return nil end
+  return name .. "-" .. realm
 end
 
+-- true if PerCharacterOptions has a Visible=true entry for THIS character
+local function isVisibleForThisChar(pco)
+  if type(pco) ~= "table" then return false end
+  local charKey = buildCharKey()
+  if not charKey then return false end
+  local v = pco[charKey]
+  return type(v) == "table" and v.Visible == true
+end
 
--- helper: build an index of active scales reported by Pawn API
-local function API_ActiveIndex()
-  ensurePawnLoaded()
-  probeAPI()
+-- Choose the best active scale for current spec
+local function getPlayerClassSpec()
+  local _, _, classID = UnitClass("player")
+  local specIndex = GetSpecialization and GetSpecialization()
+  local specID
+  if specIndex and GetSpecializationInfo then
+    specID = select(1, GetSpecializationInfo(specIndex))
+  end
+  return classID, specID
+end
+
+-- /---------- SV readers (authoritative source) ----------/
+local function readAllSVScalesFromPawn()
+  local Common = rawget(_G, "PawnCommon")
+  if type(Common) ~= "table" or type(Common.Scales) ~= "table" then
+    return {}
+  end
+  return Common.Scales
+end
+
+-- returns a classification of the SV Scale Record
+local function classifyScaleRecord(s, key)
+  -- Provider first (authoritative)
+  local isProvider = (type(s.Provider) == "string" and s.Provider ~= "")
+  -- Extra guard: keys like "\"MrRobot\":PALADIN1"
+  if (not isProvider) and type(key) == "string" and key:match('^".-":') then
+    isProvider = true
+  end
+  -- Custom only if NOT provider and has persisted Values
+  local hasValues = (not isProvider) and (type(s.Values) == "table")
+  local recType   = isProvider and "provider" or (hasValues and "custom" or "unknown")
+  local source    = isProvider and "API"      or "SV"
+  local valueSrc  = source
+  return isProvider, hasValues, recType, source, valueSrc
+end
+
+-- returns a list of all Scales in a normalized format
+local function getAllScales()
+  local out = {}
+  local Scales = readAllSVScalesFromPawn()
+  for key, s in pairs(Scales) do
+    if type(s) == "table" then
+      local hasValues  = (type(s.Values) == "table")
+      local isProvider = (not hasValues) and (type(s.Provider) == "string")
+      local name = s.LocalizedName or s.PrettyName or s.Name or key
+      local visible = isVisibleForThisChar(s.PerCharacterOptions)
+      out[#out+1] = {
+        key         = s.Key or s.Tag or key,
+        name        = name,
+        type        = hasValues and "custom" or (isProvider and "provider" or "unknown"),
+        source      = hasValues and "SV" or (isProvider and "API" or "SV"),
+        active      = visible,
+        valueSource = hasValues and "SV" or "API",
+        values      = hasValues and s.Values or nil,
+        class       = s.ClassID or s.Class,
+        provider    = s.Provider,
+      }
+    end
+  end
+  return out
+end
+
+-- returns a list of all *active* scales in a normalied format
+local function getActiveScales()
+  local all = getAllScales()
   local act = {}
-  if type(api.GetAllInfo) == "function" then
-    for _, rec in ipairs(api.GetAllInfo() or {}) do
-      if rec then
-        local rawTag = rec.Tag or rec.Key
-        local active = rec.Active or rec.Visible or isTagVisible(rawTag)
-        if active then
-          local name = norm(rec.LocalizedName or rec.PrettyName or rawTag)
-          if name ~= "" then act[name] = true end
-          local tag = norm(rawTag)
-          if tag ~= "" then act[tag] = true end
-        end
-      end
-    end
-  elseif type(api.GetAllScales) == "function" then
-    for k, v in pairs(api.GetAllScales() or {}) do
-      local rec = type(v)=="table" and v or nil
-      local tag = dequote(type(k)=="string" and k or (type(v)=="string" and v) or "")
-      local active = rec and (rec.Active or rec.Visible or isTagVisible(tag))
-      if active then
-        local name = norm((rec.LocalizedName or rec.PrettyName or
-                          (type(api.GetName)=="function" and api.GetName(tag)) or tag))
-        if name ~= "" then act[name] = true end
-        local tagl = norm(tag)
-        if tagl ~= "" then act[tagl] = true end
-      end
-    end
+  for _, r in ipairs(all) do
+    if r.active then table.insert(act, r) end
   end
   return act
 end
 
-local function playerSpec()
-  local idx = GetSpecialization()
-  local specName = idx and select(2, GetSpecializationInfo(idx)) or ""
-  return idx, specName
-end
-
-local function isTagVisible(tag)
-  tag = tostring(tag or "")
-  if type(api.IsVisible)=="function" then
-    local ok,vis = pcall(api.IsVisible, tag); if ok then return vis == true end
-  end
-  local PO = _G.PawnOptions
-  if type(PO)=="table" and type(PO.Scales)=="table" then
-    for _, s in ipairs(PO.Scales) do
-      if s.Key == tag and s.Visible == true then return true end
-    end
-  end
-  return false
-end
-
--- collect SavedVariable scales; mark active if SV says so OR API says so
-function SV_Scales(onlyActive)
-  if onlyActive == nil then onlyActive = true end
-  ensurePawnLoaded()
-  probeAPI()
-  local activeIdx = API_ActiveIndex()
-  local out = {}
-
-  local function push(s)
-    if type(s) ~= "table" then return end
-    local name   = s.Name or s.LocalizedName or s.PrettyName
-    local tag    = s.Key or s.Tag
-    local values = (type(s.Values) == "table") and s.Values or nil
-
-    local svActive  = (s.Active == "Y") or (s.Active == true)
-    local svVisible = (s.Visible == true)
-    local byName    = name and activeIdx[(name or ""):lower()]
-    local byTag     = tag and tag ~= "" and activeIdx[(tag or ""):lower()]
-    local visible   = svVisible or isTagVisible(tag)
-    local active    = svActive or byName or byTag or visible
-
-    if (not onlyActive) or active then
-      table.insert(out, {
-        name    = name,
-        tag     = tag,
-        values  = values,
-        active  = active,
-        visible = visible,
-        _raw    = s,
-      })
-    end
-  end
-
-  local function add(container)
-    if type(container) ~= "table" then return end
-    for _, s in pairs(container) do push(s) end
-  end
-
-  add(PawnOptions and PawnOptions.Scales)
-  if PawnOptions and PawnOptions.PerCharacterOptions then
-    for _, perChar in pairs(PawnOptions.PerCharacterOptions) do
-      if perChar and type(perChar.Scales) == "table" then add(perChar.Scales) end
-    end
-  end
-  add(PawnCommon and PawnCommon.Scales)
-
-  return out
-end
-
--- Provider/API scales: include only those visible to this character
-local function API_Scales()
-  local out = {}
-
-  local function push(tag, name, values)
-    tag  = tostring(tag or "")
-    name = tostring(name or "")
-    if (tag ~= "" or name ~= "") and isTagVisible(tag) then
-      table.insert(out, {
-        tag    = tag,
-        name   = name,
-        values = type(values) == "table" and values or nil,
-        active = true,
-      })
-    end
-  end
-
-  if type(api.GetAllInfo) == "function" then
-    for _, rec in ipairs(api.GetAllInfo() or {}) do
-      if type(rec) == "table" then
-        push(
-          dequote(rec.Tag or rec.Key or ""),
-          rec.LocalizedName or rec.PrettyName or rec.Tag,
-          rec.Values
-        )
+-- /========== VALUES SECTION (custom vs provider) ==========/
+-- Try a few Pawn API spellings to fetch provider weights, if your build exposes them.
+local function tryGetProviderValues(keyOrName)
+  local cands = {
+    _G.PawnGetScaleValues,
+    _G.PawnGetProviderScaleValues,
+    (_G.Pawn and _G.Pawn.GetScaleValues),
+    (_G.Pawn and _G.Pawn.GetProviderScaleValues),
+  }
+  for _, fn in ipairs(cands) do
+    if type(fn) == "function" then
+      local ok, vals = pcall(fn, keyOrName)
+      if ok and type(vals) == "table" then
+        return vals
       end
-    end
-  elseif type(api.GetAllScales) == "function" then
-    for k, v in pairs(api.GetAllScales() or {}) do
-      local tag = dequote(type(k)=="string" and k or (type(v)=="string" and v) or "")
-      local name = (type(v)=="table" and (v.LocalizedName or v.PrettyName))
-                or (type(api.GetName)=="function" and api.GetName(tag))
-                or tag
-      local values = type(v) == "table" and v.Values or nil
-      push(tag, name, values)
-    end
-  end
-
-  return out
-end
-
-
-local function specTokens(specName)
-  local n = norm(specName); local t={n}
-  if n:find("retribution",1,true) then t[#t+1]="ret" end
-  if n:find("protection",1,true)  then t[#t+1]="prot" end
-  if n:find("restoration",1,true) then t[#t+1]="resto" end
-  if n:find("discipline",1,true)  then t[#t+1]="disc" end
-  if n:find("demonology",1,true)  then t[#t+1]="demo" end
-  if n:find("destruction",1,true) then t[#t+1]="destro" end
-  if n:find("subtlety",1,true)    then t[#t+1]="sub" end
-  return t
-end
-
--- pick any cached item for probing
-local function sampleItem()
-  if type(api.GetItemData) ~= "function" then return nil end
-  for _,slot in ipairs({1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17}) do
-    local link = GetInventoryItemLink("player", slot)
-    if link then local ok,it = pcall(api.GetItemData, link); if ok and type(it)=="table" then return it, link end end
-  end
-  for bag=0, NUM_BAG_SLOTS do
-    local n = C_Container.GetContainerNumSlots(bag) or 0
-    for s=1,n do
-      local link = C_Container.GetContainerItemLink(bag, s)
-      if link then local ok,it = pcall(api.GetItemData, link); if ok and type(it)=="table" then return it, link end end
     end
   end
   return nil
 end
 
--- true if Pawn returns a numeric for (itemTable, scaleDisplayName)
-local function scoresOnThisBuild(itemTable, scaleName)
-  if not itemTable or not scaleName or scaleName=="" then return false end
-  if type(api.ItemValue)=="function" then
-    local ok,v = pcall(api.ItemValue, itemTable, scaleName)
-    Log.Debug("score-probe ItemValue(",scaleName,"):", ok and v or ("err:"..tostring(v)))
-    if ok and type(v)=="number" then return true end
+-- TODO: Is this still needed?
+-- Utility: find first active entry whose key or name contains `needle` (case-insensitive)
+local function findActiveByQuery(q)
+  if not q or q == "" then return nil end
+  local needle = q:lower()
+  local list = getActiveScales()
+  for _, r in ipairs(list) do
+    local hay = ((r.key or "") .. " " .. (r.name or "")):lower()
+    if hay:find(needle, 1, true) then
+      return r
+    end
   end
-  if type(api.SingleValue)=="function" then
-    local ok,v = pcall(api.SingleValue, itemTable, scaleName)
-    Log.Debug("score-probe SingleValue(",scaleName,"):", ok and v or ("err:"..tostring(v)))
-    if ok and type(v)=="number" then return true end
-  end
-  return false
+  return nil
 end
 
--- ---------- resolver (SV-first, API-probe fallback) ----------
-local Active = { name=nil, tag=nil, reason=nil }
-
-local function resolveScaleStrict()
-  Active.name, Active.tag, Active.reason = nil, nil, nil
-  if not ensurePawnLoaded() then return nil, "not_loaded" end
-  probeAPI()
-
-  local specIdx, specName = playerSpec()
-  if not specIdx or specName=="" then return nil, "no_spec" end
-  local tokens    = specTokens(specName)
-  local itemTable = sampleItem()
-
-  -- 1) Per-spec override -> match against SV first (must have values), else against API (but must score).
-  local S  = _G.XIVEquip_Settings or {}
-  local ov = S.PawnScaleBySpec and S.PawnScaleBySpec[specIdx]
-  if type(ov)=="string" and ov~="" then
-    -- SV exact
-    for _,r in ipairs(SV_Scales(true)) do
-      if r.values and (r.name==ov or r.tag==ov) and (r.visible or (r.tag and isTagVisible(r.tag))) then
-        if not itemTable or scoresOnThisBuild(itemTable, r.name) then
-          Active.name, Active.tag, Active.reason = r.name, r.tag, "override(SV)"
-          XIVEquip._PawnActiveName, XIVEquip._PawnActiveTag, XIVEquip._PawnActiveReason = Active.name, Active.tag, Active.reason
-          Log.Debug("resolve: override SV => NAME=", r.name, " TAG=", r.tag or "—")
-          return Active.name, Active.reason
-        end
-      end
-    end
-    -- API exact
-    for _,r in ipairs(API_Scales()) do
-      if (r.name==ov or r.tag==ov) and r.active then
-        if not itemTable or scoresOnThisBuild(itemTable, r.name) then
-          Active.name, Active.tag, Active.reason = r.name, r.tag, "override(API)"
-          XIVEquip._PawnActiveName, XIVEquip._PawnActiveTag, XIVEquip._PawnActiveReason = Active.name, Active.tag, Active.reason
-          Log.Debug("resolve: override API => NAME=", r.name, " TAG=", r.tag or "—")
-          return Active.name, Active.reason
-        end
-      end
-    end
-    Log.Warn("resolve: override not usable; continuing with spec match.")
+-- Get values table for a normalized scale entry
+local function getScaleValuesForEntry(entry)
+  if not entry or type(entry) ~= "table" then
+    return nil, nil, "bad-arg"
   end
-
-  -- 2) Prefer **visible** SV scales with weights matching spec tokens (your personal scales)
-  do
-    local candidates={}
-    for _,r in ipairs(SV_Scales(true)) do
-      if r.values and r.visible then
-        local ln = norm(r.name or "")
-        for _,t in ipairs(tokens) do
-          if ln:find(t,1,true) then candidates[#candidates+1]=r; break end
-        end
-      end
-    end
-    table.sort(candidates, function(a,b) return norm(a.name)<norm(b.name) end)
-    for _,r in ipairs(candidates) do
-      if not itemTable or scoresOnThisBuild(itemTable, r.name) then
-        Active.name, Active.tag, Active.reason = r.name, r.tag, "sv_with_values"
-        XIVEquip._PawnActiveName, XIVEquip._PawnActiveTag, XIVEquip._PawnActiveReason = Active.name, Active.tag, Active.reason
-        Log.Debug("resolve: SV picked => NAME=", r.name, " TAG=", r.tag or "—")
-        return Active.name, Active.reason
-      end
-    end
+  if entry.type == "custom" and type(entry.values) == "table" then
+    return entry.values, "SV", nil
   end
-
-  -- 3) Fall back to **visible** provider/API scales that match spec tokens, but only if they score.
-  do
-    local candidates={}
-    for _,r in ipairs(API_Scales()) do
-      if r.active then
-        local ln, lt = norm(r.name or ""), norm(r.tag or "")
-        for _,t in ipairs(tokens) do
-          if ln:find(t,1,true) or lt:find(t,1,true) then
-            -- prefer MrRobot, then Wowhead, then Other by simple heuristic
-            local pr = r.tag:find("MrRobot",1,true) and 1 or (r.tag:find("Wowhead",1,true) and 2 or 3)
-            candidates[#candidates+1] = {rec=r, pr=pr}
-            break
-          end
-        end
-      end
-    end
-    table.sort(candidates, function(a,b) if a.pr~=b.pr then return a.pr<b.pr end return norm(a.rec.name)<norm(b.rec.name) end)
-    for _,c in ipairs(candidates) do
-      local r = c.rec
-      if not itemTable or scoresOnThisBuild(itemTable, r.name) then
-        Active.name, Active.tag, Active.reason = r.name, r.tag, "api_active"
-        XIVEquip._PawnActiveName, XIVEquip._PawnActiveTag, XIVEquip._PawnActiveReason = Active.name, Active.tag, Active.reason
-        Log.Debug("resolve: API picked => NAME=", r.name, " TAG=", r.tag or "—")
-        return Active.name, Active.reason
-      end
-    end
+  if entry.type == "provider" then
+    local keyOrName = entry.key or entry.name
+    local vals = tryGetProviderValues(keyOrName)
+    if type(vals) == "table" then return vals, "API", nil end
+    return nil, "API", "no-api-values"
   end
-
-  return nil, "no_scoreable_active"
+  return nil, nil, "unknown-type"
 end
 
--- ---------- comparer ----------
-Comparers:RegisterComparer("Pawn", {
-  Label = "Pawn",
+-- Minimal stat map for fallback scoring (custom only)
+local FALLBACK_STATMAP = {
+  ITEM_MOD_STRENGTH_SHORT   = "Strength",
+  ITEM_MOD_AGILITY_SHORT    = "Agility",
+  ITEM_MOD_INTELLECT_SHORT  = "Intellect",
+  ITEM_MOD_STAMINA_SHORT    = "Stamina",
+  ITEM_MOD_CRIT_RATING_SHORT= "CritRating",
+  ITEM_MOD_HASTE_RATING_SHORT="HasteRating",
+  ITEM_MOD_MASTERY_RATING_SHORT="MasteryRating",
+  ITEM_MOD_VERSATILITY      = "Versatility",
+  ITEM_MOD_LIFESTEAL_SHORT  = "Leech",
+  ITEM_MOD_AVOIDANCE_RATING_SHORT = "Avoidance",
+  ITEM_MOD_SPEED_RATING_SHORT     = "MovementSpeed",
+  -- Armor handled via dedicated API below if present in GetItemStats
+}
 
-  IsAvailable = function()
-    local ok = ensurePawnLoaded()
-    probeAPI()
-    ok = ok and (api.GetAllInfo or api.GetAllScales) and (api.ItemValue or api.SingleValue or api.SingleFor)
-    Log.Debug("Pawn IsAvailable:", ok and "true" or "false")
-    return ok and true or false
-  end,
+local GetItemStats = GetItemStats or C_Item.GetItemStats
 
-  -- Strict: only run if we found a usable Pawn scale that scores.
-  PrePass = function()
-    local name, reason = resolveScaleStrict()
-    if not name then
-      Log.Warn("Pawn PrePass: no usable scale (", reason, ")")
-      if _G.XIVEquip_Settings and _G.XIVEquip_Settings.Messages and _G.XIVEquip_Settings.Messages.Login ~= false then
-        print(AddonPrefix .. "Pawn active scale not usable ("..tostring(reason)..").")
+-- Safe wrapper: returns stats table or nil
+local function GetItemStatsCompat(itemLink)
+  if type(GetItemStats) == "function" then
+    return GetItemStats(itemLink)
+  end
+  -- (Some clients miss the global; no reliable C_Item variant for links.)
+  -- return nil
+end
+
+local function fallbackScoreWithValues(itemLink, values)
+  local stats = GetItemStatsCompat(itemLink)
+  if type(stats) ~= "table" then return nil end
+  local score = 0
+  for k, pawnKey in pairs(FALLBACK_STATMAP) do
+    local amount = stats[k]
+    if type(amount) == "number" and values[pawnKey] then
+      score = score + amount * (values[pawnKey] or 0)
+    end
+  end
+  return score
+end
+
+local function chooseBestActiveScaleForPlayer()
+  local classID, specID = getPlayerClassSpec()
+  local act = getActiveScales()
+  local exact, classOnly, any
+  for _, r in ipairs(act) do
+    if r.class == classID then
+      if r.spec and specID and r.spec == specID then
+        exact = exact or r
+      else
+        classOnly = classOnly or r
       end
-      return false
     end
-    Log.Debug(("Pawn PrePass using: %s (tag=%s) via %s"):format(Active.name or "?", Active.tag or "—", reason or "?"))
-    return true
-  end,
+    any = any or r
+  end
+  return exact or classOnly or any
+end
 
-  -- Score via Pawn using display NAME. Accept 0. Never fall back to ilvl.
-  ScoreItem = function(location)
-    if not Active.name then return nil end
-    if C_Item and C_Item.IsItemDataCached and not C_Item.IsItemDataCached(location) then
-      if C_Item.RequestLoadItemData then C_Item.RequestLoadItemData(location) end
-      XIVEquip._needsItemRetry = true
-      return nil
-    end
-    local link = C_Item and C_Item.GetItemLink and C_Item.GetItemLink(location)
-    if not link then return nil end
+-- Core scoring helpers
+local function scoreItemWithEntry(itemLink, entry)
+  if not entry then return nil, "no-scale" end
+  local vals = (entry.type == "custom") and entry.values
+  if type(vals) == "table" and type(GetItemStatsCompat) == "function" then
+    local s = fallbackScoreWithValues(itemLink, vals)
+    if type(s) == "number" then return s, "SV-fallback" end
+  end
 
-    if type(api.GetItemData)=="function" then
-      local okIt, it = pcall(api.GetItemData, link)
-      if okIt and type(it)=="table" then
-        if type(api.ItemValue)=="function" then
-          local ok,v = pcall(api.ItemValue, it, Active.name)
-          Log.Debug("Pawn ScoreItem(ItemValue):", ok and v or ("err:"..tostring(v)), "name=", Active.name)
-          if ok and type(v)=="number" then return v end
-        end
-        if type(api.SingleValue)=="function" then
-          local ok,v = pcall(api.SingleValue, it, Active.name)
-          Log.Debug("Pawn ScoreItem(SingleValue):", ok and v or ("err:"..tostring(v)), "name=", Active.name)
-          if ok and type(v)=="number" then return v end
-        end
-      end
-    end
-    if type(api.SingleFor)=="function" then
-      local ok,v = pcall(api.SingleFor, link, Active.name)
-      Log.Debug("Pawn ScoreItem(SingleForItem):", ok and v or ("err:"..tostring(v)), "name=", Active.name)
-      if ok and type(v)=="number" then return v end
-    end
-    return nil
-  end,
-})
+  return nil, "no-scoring-path"
+end
 
--- ---------- /xivepawn debug ----------
+local function scoreItemAuto(itemLink)
+  local best = chooseBestActiveScaleForPlayer()
+  if not best then return nil, "no-active-scale" end
+  local v, src = scoreItemWithEntry(itemLink, best)
+  return v, src, best
+end
+
+local function scoreItemAs(itemLink, query)
+  if not query or query == "" then return nil, "no-query" end
+  local needle = query:lower()
+  local act = getActiveScales()
+  local match
+  for _, r in ipairs(act) do
+    local hay = ((r.key or "") .. " " .. (r.name or "")):lower()
+    if hay:find(needle, 1, true) then match = r; break end
+  end
+  if not match then return nil, "no-match" end
+  local v, src = scoreItemWithEntry(itemLink, match)
+  return v, src, match
+end
+
+-- Expose to other modules now that we have a stable contract
+function XIVEquip.PawnGetActiveScales()     return getActiveScales() end
+function XIVEquip.PawnGetAllScales()        return getAllScales()    end
+function XIVEquip.PawnGetScaleValues(entry) return getScaleValuesForEntry(entry) end
+
+function XIVEquip.PawnBestActiveScale()
+  -- chooseBestActiveScaleForPlayer is the local you already have
+  return (chooseBestActiveScaleForPlayer())
+end
+
+function XIVEquip.PawnScoreLinkAuto(itemLink)
+  -- scoreItemAuto is your local that picks the best active scale
+  return scoreItemAuto(itemLink)   -- returns value, sourceTag, scaleEntryUsed
+end
+
+function XIVEquip.PawnScoreLocationAuto(location)
+  -- Accepts an ItemLocation (bags/equipped) or an inventory slot number.
+  local link
+  if C_Item and C_Item.GetItemLink and location and type(location)=="table" then
+    local ok, l = pcall(C_Item.GetItemLink, location)
+    if ok then link = l end
+  end
+  if not link and type(location)=="number" and GetInventoryItemLink then
+    local ok, l = pcall(GetInventoryItemLink, "player", location)
+    if ok then link = l end
+  end
+  if not link then return nil, "no-link" end
+  return scoreItemAuto(link)       -- returns value, sourceTag, scaleEntryUsed
+end
+
+-- Returns: valuesTable|nil, sourceTag ("SV"|"API"), errMsg|nil
+local function getScaleValuesForEntry(entry)
+  if not entry or type(entry) ~= "table" then
+    return nil, nil, "bad-arg"
+  end
+  -- Custom: always from SV
+  if entry.type == "custom" and type(entry.values) == "table" then
+    return entry.values, "SV", nil
+  end
+  -- Provider: attempt API lookups
+  if entry.type == "provider" then
+    local keyOrName = entry.key or entry.name
+    local vals = tryGetProviderValues(keyOrName)
+    if type(vals) == "table" then
+      return vals, "API", nil
+    end
+    return nil, "API", "no-api-values"
+  end
+  return nil, nil, "unknown-type"
+end
+
+-- /---------- public API (for other modules) ----------/
+function XIVEquip.GetActivePawnScales()     return getActiveScales() end
+function XIVEquip.GetAllPawnScales()        return getAllScales()    end
+function XIVEquip.GetPawnScaleValues(entry) return getScaleValuesForEntry(entry) end
+
+-- /---------- slash command printing helpers ----------/
+local function printActive()
+  local list = getActiveScales()
+  if #list == 0 then
+    log("No ACTIVE scales found for this character.")
+    return
+  end
+  for _, r in ipairs(list) do
+    print(PREFIX, ("ACTIVE: NAME=%s  TYPE=%s  VALUE_SRC=%s  KEY=%s")
+      :format(tostring(r.name), tostring(r.type), tostring(r.valueSource), tostring(r.key)))
+  end
+end
+
+local function printAll(filter)
+  local list = getAllScales()
+  local needle = filter and filter:lower() or nil
+  local shown = 0
+  for _, r in ipairs(list) do
+    local line = ("NAME=%s  ACTIVE=%s  TYPE=%s  SRC=%s  PROVIDER=%s  KEY=%s")
+      :format(tostring(r.name), r.active and "Y" or "N", tostring(r.type),
+              tostring(r.source), tostring(r.provider or ""), tostring(r.key))
+    if (not needle) or line:lower():find(needle, 1, true) then
+      print(PREFIX, line)
+      shown = shown + 1
+    end
+  end
+  if shown == 0 then print(PREFIX, "No scales matched.") end
+end
+
+local function printWhoAmI()
+  local name, realm = currentCharPieces()
+  local charKey = buildCharKey()
+
+  print(PREFIX, "UnitName:", tostring(name))
+  print(PREFIX, "GetRealmName:", tostring(realm))
+  print(PREFIX, "CharKey:", tostring(charKey or "<nil>"))
+end
+
+-- Dump weights for one ACTIVE scale by substring of name or key
+local function printDump(rest)
+  local q = (rest or ""):match("^%s*(.-)%s*$")
+  if q == "" then
+    log("Usage: /xivepawn dump <name-or-key-substring>")
+    return
+  end
+  local entry = findActiveByQuery(q)
+  if not entry then
+    log("No active scale matched:", q)
+    return
+  end
+  local vals, src, err = getScaleValuesForEntry(entry)
+  if not vals then
+    log(("No weight table available (%s). Will rely on ItemValue at score time."):format(err or "unknown"))
+    log(("Matched: NAME=%s TYPE=%s KEY=%s"):format(tostring(entry.name), tostring(entry.type), tostring(entry.key)))
+    return
+  end
+  log(("Weights from %s for %s (KEY=%s):"):format(src or "?", tostring(entry.name), tostring(entry.key)))
+  -- pretty-print up to 25 stats, sorted
+  local ks = {}
+  for k in pairs(vals) do ks[#ks+1]=k end
+  table.sort(ks)
+  local shown, limit = 0, 25
+  for _, k in ipairs(ks) do
+    print(PREFIX, k, "=", tostring(vals[k]))
+    shown = shown + 1
+    if shown >= limit then
+      if #ks > limit then print(PREFIX, "(…truncated)") end
+      break
+    end
+  end
+end
+
+local function extractItemLink(text)
+  if not text or text == "" then return nil end
+
+  -- 1) full colored hyperlink
+  local link = text:match("(|c%x+|Hitem:[^|]+|h[^|]*|h|r)")
+  if link then return link end
+
+  -- 2) plain hyperlink (no |c…|r wrapper)
+  link = text:match("(|Hitem:[^|]+|h[^|]*|h)")
+  if link then return link end
+
+  -- 3) raw itemString (item:…); try to resolve to a proper link
+  local itemString = text:match("(item:[^%s|]+)")
+  if itemString then
+    local _, resolved = GetItemStats(itemString)
+    if resolved then return resolved end
+  end
+
+  return nil
+end
+
+-- escape a string so we can gsub it out safely
+local function escape_for_pattern(s)
+  return (s:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])","%%%1"))
+end
+
+local function printScoreAuto(rest)
+  local link = extractItemLink(rest)
+  if not link then
+    log("Usage: /xivepawn score <itemLink>")
+    return
+  end
+  local v, src, scale = scoreItemAuto(link)
+  if not v then
+    log(("Could not score item (%s)."):format(src or "unknown"))
+    return
+  end
+  log(("Score: %.2f  via %s  using %s (KEY=%s)"):format(v, src, scale.name or "?", scale.key or "?"))
+end
+
+local function printScoreAs(rest)
+  local link = extractItemLink(rest)
+  if not link then
+    log("Usage: /xivepawn scoreas <scale-substring> <itemLink>")
+    return
+  end
+  -- remove the link from the input to leave only the query
+  local query = rest:gsub(escape_for_pattern(link), ""):match("^%s*(.-)%s*$")
+  if query == "" then
+    log("Usage: /xivepawn scoreas <scale-substring> <itemLink>")
+    return
+  end
+  local v, src, scale = scoreItemAs(link, query)
+  if not v then
+    log(("Could not score item with '%s' (%s)."):format(query, src or "unknown"))
+    return
+  end
+  log(("Score: %.2f  via %s  using %s (KEY=%s)"):format(v, src, scale.name or "?", scale.key or "?"))
+end
+
+-- /---------- slash ----------/
 SLASH_XIVEPAWN1 = "/xivepawn"
 SlashCmdList["XIVEPAWN"] = function(msg)
-  local sub = msg:match("^(%S+)") or ""
-  ensurePawnLoaded()
-  probeAPI()
+  msg = (msg or ""):match("^%s*(.-)%s*$")
+  local cmd, rest = msg:match("^(%S+)%s*(.*)$"); cmd = cmd and cmd:lower() or ""
 
-  -- /xivepawn scales
-  if sub == "scales" then
-    echo("scales", "")
-    if ensurePawnLoaded() then
-      probeAPI()
-      local printed = 0
-      if type(api.GetAllInfo) == "function" then
-        for _, rec in pairs(api.GetAllInfo() or {}) do
-          if type(rec) == "table" then
-            local tag  = dequote(rec.Tag or rec.Key or "")
-            local name = rec.LocalizedName or rec.PrettyName or rec.Tag
-            print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s")
-              :format(tag ~= "" and tag or "—", name or "—", isTagVisible(tag) and "Y" or "N"))
-            printed = printed + 1
-          end
-        end
-      elseif type(api.GetAllScales) == "function" then
-        for k, v in pairs(api.GetAllScales() or {}) do
-          local tag = dequote(type(k)=="string" and k or (type(v)=="string" and v) or "")
-          local name = (type(v)=="table" and (v.LocalizedName or v.PrettyName))
-                    or (type(api.GetName)=="function" and api.GetName(tag))
-                    or tag
-          print(("|cff66ccffXIVEquip|r TAG=%s NAME=%s Active=%s")
-            :format(tag ~= "" and tag or "—", name or "—", isTagVisible(tag) and "Y" or "N"))
-          printed = printed + 1
-        end
-      end
-      if printed == 0 then
-        print("|cff66ccffXIVEquip|r Pawn API not available.")
-      end
-    else
-      print("|cff66ccffXIVEquip|r Pawn API not available.")
-    end
-    return
+  if cmd == "" or cmd == "active" then
+    printActive()                                      -- default: Active only
+  elseif cmd == "scales" then
+    printAll(rest ~= "" and rest or nil)               -- full list (debug)
+  elseif cmd == "whoami" then
+    printWhoAmI()                                      -- show key candidates
+  elseif cmd == "dump" then
+    printDump(rest)                                    -- show weight table for one active scale
+  elseif cmd == "score" then
+    printScoreAuto(rest)
+  elseif cmd == "scoreas" then
+    printScoreAs(rest)
+  else
+    log("Usage:")
+    log("  /xivepawn             — list ACTIVE scales for this character")
+    log("  /xivepawn active      — same as default")
+    log("  /xivepawn scales [q]  — full list (filter optional)")
+    log("  /xivepawn whoami      — show character key candidates used for SV matching")
+    log("  /xivepawn stats       — counts")
+    log("  /xivepawn dump [q]    - dump values for scale")
+    log("  /xivepawn score <link>   — score with best scale for current spec")
+    log("  /xivepawn scoreas <q> <link> — score with a specific ACTIVE scale")
   end
-
-  -- /xivepawn sv
-  if sub == "sv" then
-    echo("sv", "")
-    ensurePawnLoaded()
-    probeAPI()
-    local rows = SV_Scales(false)
-
-    -- merge in visible provider scales that lack an SV table
-    local seen = {}
-    for _, r in ipairs(rows) do
-      local t = (r.tag or ""):lower()
-      local n = (r.name or ""):lower()
-      if t ~= "" then seen[t] = true end
-      if n ~= "" then seen[n] = true end
-    end
-    for _, r in ipairs(API_Scales()) do
-      local t = (r.tag or ""):lower()
-      local n = (r.name or ""):lower()
-      if not seen[t] and not seen[n] then
-        rows[#rows+1] = {
-          name         = r.name,
-          tag          = r.tag,
-          values       = r.values,
-          active       = r.active,
-          visible      = true,
-          providerOnly = true,
-        }
-      end
-    end
-
-    for _, r in ipairs(rows) do
-      print(("|cff66ccffXIVEquip|r SV: NAME=%s TAG=%s Active=%s Visible=%s Values=%s ProviderOnly=%s ProviderValues=%s")
-        :format(r.name or "—", r.tag or "—",
-                r.active and "Y" or "N",
-                r.visible and "Y" or "N",
-                r.values and "Y" or "N",
-                r.providerOnly and "Y" or "N",
-                (r.providerOnly and r.values) and "Y" or "N"))
-    end
-    return
-  end
-
-  -- /xivepawn weights <name/tag>
-  if sub:sub(1,7) == "weights" then
-    local q = (msg:sub(8) or ""):match("^%s*(.-)%s*$")
-    echo("weights", q)
-    if q == "" then
-      print("|cff66ccffXIVEquip|r Usage: /xivepawn weights <name|tag>")
-      return
-    end
-    local ql = q:lower()
-
-    ensurePawnLoaded()
-    probeAPI()
-
-    local function dump(r)
-      if r and r.values then
-        print(("|cff66ccffXIVEquip|r Weights for [%s] (tag=%s):")
-          :format(r.name or "—", r.tag or "—"))
-        for stat, val in pairs(r.values) do
-          print("   ", stat, "=", val)
-        end
-        return true
-      end
-    end
-
-    local svActive  = SV_Scales(true)
-    local apiActive = API_Scales()
-
-    -- 1) exact match (active SV scales)
-    for _, r in ipairs(svActive) do
-      local n = (r.name or ""):lower()
-      local t = (r.tag or ""):lower()
-      if (n == ql or (t ~= "" and t == ql)) and dump(r) then return end
-    end
-
-    -- 2) substring match (active SV scales)
-    for _, r in ipairs(svActive) do
-      local n = (r.name or ""):lower()
-      local t = (r.tag or ""):lower()
-      if (n:find(ql, 1, true) or (t ~= "" and t:find(ql, 1, true))) and dump(r) then return end
-    end
-
-    -- 3) exact match (active provider scales via API)
-    for _, r in ipairs(apiActive) do
-      local n = (r.name or ""):lower()
-      local t = (r.tag or ""):lower()
-      if n == ql or (t ~= "" and t == ql) then
-        for _, sv in ipairs(svActive) do
-          local sn = (sv.name or ""):lower()
-          local st = (sv.tag or ""):lower()
-          if sn == n or (st ~= "" and st == t) then
-            if dump(sv) then return end
-          end
-        end
-        if dump(r) then return end
-        print(("|cff66ccffXIVEquip|r '%s' is an active provider scale with no SV table; " ..
-               "XIVEquip scores it via Pawn API at runtime.")
-          :format(r.name or r.tag or q))
-        return
-      end
-    end
-
-    -- 4) substring match (active provider scales via API)
-    for _, r in ipairs(apiActive) do
-      local n = (r.name or ""):lower()
-      local t = (r.tag or ""):lower()
-      if n:find(ql, 1, true) or (t ~= "" and t:find(ql, 1, true)) then
-        for _, sv in ipairs(svActive) do
-          local sn = (sv.name or ""):lower()
-          local st = (sv.tag or ""):lower()
-          if sn == n or (st ~= "" and st == t) then
-            if dump(sv) then return end
-          end
-        end
-        if dump(r) then return end
-        print(("|cff66ccffXIVEquip|r '%s' is an active provider scale with no SV table; " ..
-               "XIVEquip scores it via Pawn API at runtime.")
-          :format(r.name or r.tag or q))
-        return
-      end
-    end
-    print("|cff66ccffXIVEquip|r No scale matched:", q)
-    return
-  end
-
-  -- /xivepawn score <scale> [itemLink]
-  if sub == "score" then
-    local rest = msg:sub(6) or ""
-    local scale, link = rest:match("^%s*(%S+)%s*(.*)")
-    scale = trim(scale)
-    link = trim(link)
-    echo("score", scale .. (link ~= "" and (" " .. link) or ""))
-    if scale == "" then
-      print("|cff66ccffXIVEquip|r Usage: /xivepawn score <scale> [itemLink]")
-      return
-    end
-    ensurePawnLoaded()
-    probeAPI()
-    local itemTable, itemLink
-    if link ~= "" then
-      itemLink = link
-      if type(api.GetItemData) == "function" then
-        local ok,it = pcall(api.GetItemData, link)
-        if ok and type(it) == "table" then itemTable = it end
-      end
-    else
-      itemTable, itemLink = sampleItem()
-    end
-    if not itemTable and not itemLink then
-      print("|cff66ccffXIVEquip|r No item available to score.")
-      return
-    end
-    local score
-    if itemTable and type(api.ItemValue) == "function" then
-      local ok,v = pcall(api.ItemValue, itemTable, scale)
-      if ok and type(v) == "number" then score = v end
-    end
-    if not score and itemLink and type(api.SingleFor) == "function" then
-      local ok,v = pcall(api.SingleFor, itemLink, scale)
-      if ok and type(v) == "number" then score = v end
-    end
-    if score then
-      print(("|cff66ccffXIVEquip|r Score[%s] = %s"):format(scale, score))
-    else
-      print(("|cff66ccffXIVEquip|r Unable to score scale '%s'."):format(scale))
-    end
-    return
-  end
-
-  -- default help
-  print("|cff66ccffXIVEquip|r Usage: /xivepawn <scales | sv | weights <name> | score <scale>>")
 end

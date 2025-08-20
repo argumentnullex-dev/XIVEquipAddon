@@ -31,6 +31,19 @@ local SLOT_EQUIPLOCS = {
 
 local ITEMCLASS_ARMOR = 4
 
+-- Stable key for a physical item instance
+local function ItemInstanceKey(itemLoc)
+  if C_Item and C_Item.GetItemGUID and itemLoc then
+    local ok, guid = pcall(C_Item.GetItemGUID, itemLoc)
+    if ok and guid and guid ~= "" then return guid end
+  end
+  -- fallback: itemID + bag/slot
+  local link = C_Item and C_Item.GetItemLink and C_Item.GetItemLink(itemLoc)
+  local id = link and tonumber(link:match("|Hitem:(%d+)"))
+  local bag, slot = itemLoc and itemLoc.bagID, itemLoc and itemLoc.slotIndex
+  return table.concat({id or 0, bag or -1, slot or -1}, ":")
+end
+
 local function itemGUID(loc)
   if C_Item and C_Item.GetItemGUID and loc then
     local ok, guid = pcall(C_Item.GetItemGUID, loc)
@@ -208,29 +221,48 @@ local SLOT_LABEL = {
 }
 
 -- Plan changes without equipping. Returns { {slot,slotName,oldLink,newLink,deltaScore,deltaIlvl}, ... }, hadPendingLoad
-function C:PlanBest(cmp)
+function C:PlanBest(cmp, opts)
+  opts = opts  or {}
   local expectedArmor = playerArmorSubclass()
   local used = {}
   local changes = {}
   local hadPending = false
-  local order = { 1,3,5,6,7,8,9,10,15,2,11,12,13,14 }  -- same pass order you equip with
+  -- same pass order you equip with
+  local order = { 1,3,5,6,7,8,9,10,15,2,11,12,13,14 }
 
   for _, slotID in ipairs(order) do
     local pick, equipped = chooseForSlot(cmp, slotID, expectedArmor, used)
     if pick then
-      local oldLink = (equipped and equipped.link) or "|cff888888(None)|r"
-      local newLink = pick.link or oldLink
-      local deltaScore = (equipped and equipped.score and pick.score) and (pick.score - equipped.score) or nil
-      local deltaIlvl  = ((equipped and equipped.ilvl) and pick.ilvl) and (pick.ilvl - equipped.ilvl) or nil
+      local oldLink   = (equipped and equipped.link) or "|cff888888(None)|r"
+      local newLink   = pick.link or oldLink
+      local newScore  = (pick and pick.score) or 0
+      local oldScore  = (equipped and equipped.score) or 0
+      local newIlvl   = (pick and pick.ilvl) or 0
+      local oldIlvl   = (equipped and equipped.ilvl) or 0
+
       table.insert(changes, {
-        slot       = slotID,
-        slotName   = SLOT_LABEL[slotID] or ("Slot "..slotID),
-        oldLink    = oldLink,
-        newLink    = newLink,
-        deltaScore = deltaScore,
-        deltaIlvl  = deltaIlvl,
+        slot        = slotID,
+        slotName    = SLOT_LABEL[slotID] or ("Slot "..slotID),
+        oldLink     = oldLink,
+        newLink     = newLink,
+        deltaScore  = newScore - oldScore,
+        deltaIlvl   = newIlvl - oldIlvl,
+        newLoc      = pick.loc,
+        oldLoc      = equipped and equipped.loc or nil,
+        scaleValues = pick.scaleValues,
       })
     end
+  end
+
+  -- Merge WEAPONS in the same plan so preview & equip paths “just work”.
+  if XIVEquip.Weapons and XIVEquip.Weapons.PlanBest then
+    local wPlan, wChanges, wPending = XIVEquip.Weapons:PlanBest(cmp)
+    if type(wChanges) == "table" then
+      for _, row in ipairs(wChanges) do
+        table.insert(changes, row)
+      end
+    end
+    hadPending = hadPending or wPending or false
   end
 
   -- if ScoreItem asked for item loads during plan, surface that so the UI can hint “loading…”
@@ -257,6 +289,7 @@ function C:EquipBest()
   -- helper to equip and mark used
   local function equipPick(slotID, pick, equipped)
     if not pick then return false end
+    -- TODO: the oldLink doesn't seem to be working quite right here, the Replaced message doesn't print if the oldLink was an item instead of None
     local oldLink = (equipped and equipped.link) or "|cff888888(None)|r"
     local newLink = equipByBasics(pick) or oldLink
     if pick.guid then used[pick.guid] = true end
@@ -276,13 +309,11 @@ function C:EquipBest()
     if equipPick(slotID, pick, equipped) then anyChange = true end
   end
 
-  -- Weapons: let the weapons module handle all combinations
-  if XIVEquip.Weapons and XIVEquip.Weapons.FindBestLoadout and XIVEquip.Weapons.EquipLoadout then
-    local loadout = XIVEquip.Weapons:FindBestLoadout(cmp)
-    if loadout then
-      local changed = XIVEquip.Weapons:EquipLoadout(loadout, showEquip)
-      anyChange = anyChange or changed
-    end
+  -- Weapons: use the weapons module's plan + equip
+  if XIVEquip.Weapons and XIVEquip.Weapons.PlanBest and XIVEquip.Weapons.EquipBest then
+    local weaponPlan = select(1, XIVEquip.Weapons:PlanBest(cmp))  -- plan (we ignore the changes here)
+    local changed = XIVEquip.Weapons:EquipBest(cmp, weaponPlan, showEquip)
+    anyChange = anyChange or changed
   end
 
   if showEquip and not anyChange then
