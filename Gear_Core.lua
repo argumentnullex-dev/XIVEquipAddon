@@ -239,8 +239,11 @@ function Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
 
   local row = {
     slot        = slotID,
+    slotName    = Core.SLOT_LABEL[slotID] or ("Slot "..slotID),
+    oldLink     = oldLink,
     newLink     = newLink,
     deltaScore  = newScore - oldScore,
+    deltaIlvl   = newIlvl - oldIlvl,
     newLoc      = pick.loc,
     oldLoc      = equipped and equipped.loc or nil,
     scaleValues = pick.scaleValues,
