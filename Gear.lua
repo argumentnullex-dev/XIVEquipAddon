@@ -72,4 +72,49 @@ function C:EquipBest()
   end
 
   Comparers:EndPass()
+
+  C:SaveEquippedToSpecSet()
+end
+
+-- =========================
+-- Equipment Set helper
+-- =========================
+-- Saves the *currently equipped* items to a gear set named "<Spec>.xive".
+-- If the set doesn't exist yet, it is created (using the spec icon if available), then saved.
+function C:SaveEquippedToSpecSet()
+  -- Be graceful if the API isn't available or we're in combat
+  if type(C_EquipmentSet) ~= "table" or InCombatLockdown and InCombatLockdown() then return end
+
+  local specIndex = GetSpecialization and GetSpecialization()
+  local specName, specIcon = "Spec", nil
+  if specIndex then
+    local _, sName, _, sIcon = GetSpecializationInfo(specIndex)
+    if sName and sName ~= "" then specName = sName end
+    specIcon = sIcon
+  end
+
+  local setName = (specName or "Spec") .. ".xive"
+
+  -- Find or create the set
+  local setID = C_EquipmentSet.GetEquipmentSetID and C_EquipmentSet.GetEquipmentSetID(setName)
+  if not setID then
+    local icon = specIcon or 134400 -- fallback generic icon
+    if C_EquipmentSet.CreateEquipmentSet then
+      pcall(C_EquipmentSet.CreateEquipmentSet, setName, icon)
+      -- re-fetch id after create
+      setID = C_EquipmentSet.GetEquipmentSetID and C_EquipmentSet.GetEquipmentSetID(setName) or setID
+    end
+  else
+    -- Optional: update icon to spec icon if available
+    if specIcon and C_EquipmentSet.ModifyEquipmentSetIcon then
+      pcall(C_EquipmentSet.ModifyEquipmentSetIcon, setID, specIcon)
+    end
+  end
+
+  -- Save current equipment into the set
+  if setID and C_EquipmentSet.SaveEquipmentSet then
+    pcall(C_EquipmentSet.SaveEquipmentSet, setID)
+    -- Optional message (quiet by default). Uncomment if you want confirmation:
+    -- print((L.AddonPrefix or "XIVEquip: ") .. "Saved equipment set: " .. setName)
+  end
 end
