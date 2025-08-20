@@ -8,6 +8,7 @@
 Localization.lua
 Logger.lua
 Hooks.lua
+Gear_Core.lua
 Pawn.lua
 Comparers.lua
 Pawn_Comparer.lua
