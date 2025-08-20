@@ -221,3 +221,43 @@ do
     return best, equipped
   end
 end
+
+-- =========================
+-- shared helper to append to plan + build a change row
+-- =========================
+function Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
+  -- Add to plan
+  table.insert(plan, pick)
+
+  -- Build the UI change row (exactly the same fields you’re using)
+  local oldLink   = (equipped and equipped.link) or "|cff888888(None)|r"
+  local newLink   = pick.link or oldLink
+  local newScore  = (pick and pick.score) or 0
+  local oldScore  = (equipped and equipped.score) or 0
+  local newIlvl   = (pick and pick.ilvl) or 0
+  local oldIlvl   = (equipped and equipped.ilvl) or 0
+
+  local row = {
+    slot        = slotID,
+    newLink     = newLink,
+    deltaScore  = newScore - oldScore,
+    newLoc      = pick.loc,
+    oldLoc      = equipped and equipped.loc or nil,
+    scaleValues = pick.scaleValues,
+  }
+
+  table.insert(changes, row)
+  return row
+end
+
+-- try-pick helper that runs chooseForSlot, appends outputs, and marks `used`.
+-- Returns pick, equipped, chosen (boolean).
+function Core.tryChooseAppend(plan, changes, slotID, comparer, expectedArmorSubclass, used)
+  local pick, equipped = Core.chooseForSlot(comparer, slotID, expectedArmorSubclass, used)
+  if pick then
+    Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
+    if pick.guid and used then used[pick.guid] = true end
+    return pick, equipped, true
+  end
+  return nil, equipped, false
+end
