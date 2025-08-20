@@ -14,6 +14,7 @@ Comparers.lua
 Pawn_Comparer.lua
 Weapons.lua
 Jewelry.lua
+Armor.lua
 Gear.lua
 UI.lua
 Settings_Pawn.lua

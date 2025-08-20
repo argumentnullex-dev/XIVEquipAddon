@@ -15,33 +15,23 @@ local equipByBasics       = Core.equipByBasics
 -- PlanBest returns (changes, pending, plan)
 function C:PlanBest(cmp, opts)
   opts = opts or {}
-  local expectedArmor = playerArmorSubclass()
-  local used, plan, changes = {}, {}, {}
+  local used = {}
+  local plan, changes = {}, {}
   local hadPending = false
 
-  -- Armor only (cloak/jewelry handled in Jewelry.lua)
-  for _, slotID in ipairs({ 1,3,5,6,7,8,9,10 }) do
-    Core.tryChooseAppend(plan, changes, slotID, cmp, expectedArmor, used)
-  end
+  -- Require modules (no fallbacks)
+  local aChanges, aPending, aPlan = XIVEquip.Armor:PlanBest(cmp, opts, used)
+  local jChanges, jPending, jPlan = XIVEquip.Jewelry:PlanBest(cmp, opts, used)
 
-  -- Jewelry module (merged into plan/changes)
-  local jChanges, jPending, jPlan
-  if XIVEquip.Jewelry and XIVEquip.Jewelry.PlanBest then
-    jChanges, jPending, jPlan = XIVEquip.Jewelry:PlanBest(cmp, opts, used)
-  else
-    -- Fallback if Jewelry.lua isn't loaded yet (keeps behavior identical)
-    jPlan, jChanges = {}, {}
-    for _, slotID in ipairs({15,2,11,12,13,14}) do
-      Core.tryChooseAppend(jPlan, jChanges, slotID, cmp, expectedArmor, used)
-    end
-    jPending = (XIVEquip._needsItemRetry == true)
-  end
-
+  -- Merge armor + jewelry
+  for _, r in ipairs(aChanges or {}) do table.insert(changes, r) end
   for _, r in ipairs(jChanges or {}) do table.insert(changes, r) end
+  for _, p in ipairs(aPlan or {})    do table.insert(plan,    p) end
   for _, p in ipairs(jPlan or {})    do table.insert(plan,    p) end
-  hadPending = hadPending or (jPending == true)
 
-  -- Weapons: append only their 'changes' (unchanged)
+  hadPending = (aPending == true) or (jPending == true)
+
+  -- Weapons: append only their 'changes' (unchanged behavior)
   if XIVEquip.Weapons and XIVEquip.Weapons.PlanBest then
     local wPlan, wChanges, wPending = XIVEquip.Weapons:PlanBest(cmp)
     if type(wChanges) == "table" then
@@ -77,12 +67,6 @@ function C:EquipBest()
         print((L.AddonPrefix or "XIVEquip: ") .. string.format(L.ReplacedWith or "Replaced %s with %s.", oldLink, newLink))
       end
     end
-  end
-
-  if XIVEquip.Weapons and XIVEquip.Weapons.PlanBest and XIVEquip.Weapons.EquipBest then
-    local weaponPlan = select(1, XIVEquip.Weapons:PlanBest(cmp))
-    local changed = XIVEquip.Weapons:EquipBest(cmp, weaponPlan, showEquip)
-    anyChange = anyChange or changed
   end
 
   if showEquip and not anyChange then
