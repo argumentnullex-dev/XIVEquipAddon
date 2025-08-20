@@ -113,12 +113,6 @@ end
 
 -- -------- scoring/picks --------
 
-local function scoreItem(cmp, itemLoc, slotID)
-  if not (cmp and cmp.ScoreItem) then return 0 end
-  local ok, v = pcall(cmp.ScoreItem, itemLoc, slotID)
-  return (ok and type(v) == "number") and v or 0
-end
-
 local function makePick(itemLoc, link, equipLoc, slotID, score)
   return {
     loc        = itemLoc,
@@ -145,12 +139,12 @@ local function collectCandidates(cmp, used, P)
           local guid = Core.itemGUID(loc)
           if not (used and guid and used[guid]) then
             if MH2H[equipLoc] and P.allow2H then
-              table.insert(mh2h, { loc=loc, link=link, equipLoc=equipLoc, scoreMH=scoreItem(cmp, loc, MH) })
+              table.insert(mh2h, { loc=loc, link=link, equipLoc=equipLoc, scoreMH=Core.scoreItem(cmp, loc, MH) })
             elseif MH1H[equipLoc] and P.allowMH1H then
-              table.insert(mh1h, { loc=loc, link=link, equipLoc=equipLoc, scoreMH=scoreItem(cmp, loc, MH) })
+              table.insert(mh1h, { loc=loc, link=link, equipLoc=equipLoc, scoreMH=Core.scoreItem(cmp, loc, MH) })
             end
             if offhandLocAllowed(equipLoc, P) then
-              table.insert(oh, { loc=loc, link=link, equipLoc=equipLoc, scoreOH=scoreItem(cmp, loc, OH) })
+              table.insert(oh, { loc=loc, link=link, equipLoc=equipLoc, scoreOH=Core.scoreItem(cmp, loc, OH) })
             end
           end
         end

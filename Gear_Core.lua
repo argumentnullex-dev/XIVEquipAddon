@@ -41,6 +41,13 @@ Core.SLOT_LABEL = {
 -- Public helpers (logic unchanged)
 -- =========================
 
+-- guarded comparer call used by planners (returns 0 on error)
+function Core.scoreItem(cmp, itemLoc, slotID)
+  if not (cmp and cmp.ScoreItem) then return 0 end
+  local ok, v = pcall(cmp.ScoreItem, itemLoc, slotID)
+  return (ok and type(v) == "number") and v or 0
+end
+
 function Core.ItemInstanceKey(itemLoc)
   if C_Item and C_Item.GetItemGUID and itemLoc then
     local ok, guid = pcall(C_Item.GetItemGUID, itemLoc)

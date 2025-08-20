@@ -9,30 +9,35 @@ local Core = XIVEquip.Gear_Core
 local C = {}
 XIVEquip.Gear = C
 
-local playerArmorSubclass = Core.playerArmorSubclass
-local equipByBasics       = Core.equipByBasics
+local equipByBasics = Core.equipByBasics
+
+-- =========================
+-- Public API
+-- =========================
 
 -- PlanBest returns (changes, pending, plan)
 function C:PlanBest(cmp, opts)
   opts = opts or {}
+
   local used = {}
   local plan, changes = {}, {}
   local hadPending = false
 
-  -- Require modules (no fallbacks)
-  local aChanges, aPending, aPlan = XIVEquip.Armor:PlanBest(cmp, opts, used)
-  local jChanges, jPending, jPlan = XIVEquip.Jewelry:PlanBest(cmp, opts, used)
-  local wChanges, wPending, wPlan = XIVEquip.Weapons:PlanBest(cmp, opts, used)
+  -- Orchestrate planners in this order
+  local planners = {
+    XIVEquip.Armor,
+    XIVEquip.Jewelry,
+    XIVEquip.Weapons,
+  }
 
-  -- Merge armor + jewelry
-  for _, r in ipairs(aChanges or {}) do table.insert(changes, r) end
-  for _, r in ipairs(jChanges or {}) do table.insert(changes, r) end
-  for _, r in ipairs(wChanges or {}) do table.insert(changes, r) end
-  for _, p in ipairs(aPlan or {})    do table.insert(plan,    p) end
-  for _, p in ipairs(jPlan or {})    do table.insert(plan,    p) end
-  for _, p in ipairs(wPlan or {})    do table.insert(plan,    p) end
+  for _, planner in ipairs(planners) do
+    -- No fallbacks: assume modules are loaded and expose PlanBest
+    local pChanges, pPending, pPlan = planner:PlanBest(cmp, opts, used)
 
-  hadPending = (aPending == true) or (jPending == true) or (wPending == true)
+    for _, r in ipairs(pChanges or {}) do table.insert(changes, r) end
+    for _, p in ipairs(pPlan or {})    do table.insert(plan,    p) end
+    hadPending = hadPending or (pPending == true)
+  end
 
   return changes, hadPending, plan
 end
