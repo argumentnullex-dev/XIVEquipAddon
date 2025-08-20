@@ -9,50 +9,12 @@ local Core = XIVEquip.Gear_Core
 local C = {}
 XIVEquip.Gear = C
 
-              if score and (not best or score > best.score) then
-                best = {
-                  loc        = itemLoc,
-                  guid       = guid,
-                  link       = link,
-                  score      = score,
-                  ilvl       = ilvl,
-                  equipLoc   = equipLoc,
-                  targetSlot = slotID,
-                }
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-
-  -- Guard: only upgrade if strictly better than what’s on the character.
-  if best then
-    if equippedScore ~= nil then
-      if best.score <= (equippedScore + EPS) then
-        -- not an upgrade by Pawn score
-        return nil, equipped
-      end
-    else
-      -- Equipped piece isn’t scoreable; don’t downgrade ilvl.
-      if best.ilvl <= equippedIlvl then
-        return nil, equipped
-      end
-    end
-  end
-
-  return best, equipped
-end
-
--- Pretty slot labels for the tooltip
-local SLOT_LABEL = {
-  [1]="Head", [2]="Neck", [3]="Shoulder", [5]="Chest", [6]="Waist",
-  [7]="Legs", [8]="Feet", [9]="Wrist", [10]="Hands", [11]="Ring 1",
-  [12]="Ring 2", [13]="Trinket 1", [14]="Trinket 2", [15]="Back",
-}
-
--- Plan changes without equipping. Returns { {slot,slotName,oldLink,newLink,deltaScore,deltaIlvl}, ... }, hadPendingLoad
+-- Keep local aliases for readability; logic is identical to the working file
+local ARMOR_SLOTS        = Core.ARMOR_SLOTS
+local JEWELRY            = Core.JEWELRY
+local LOWER_ILVL_ARMOR   = Core.LOWER_ILVL_ARMOR
+local LOWER_ILVL_JEWELRY = Core.LOWER_ILVL_JEWELRY
+local SLOT_EQUIPLOCS     = Core.SLOT_EQUIPLOCS
 local ITEMCLASS_ARMOR    = Core.ITEMCLASS_ARMOR
 local SLOT_LABEL         = Core.SLOT_LABEL
 
