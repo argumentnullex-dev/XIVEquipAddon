@@ -158,35 +158,27 @@ function chooseForSlot(comparer, slotID, expectedArmorSubclass, used)
       if info and info.itemID then
         local _, _, _, equipLoc, _, classID, subclassID = GetItemInfoInstant(info.itemID)
         if equipLoc and equipLocMatchesSlot(equipLoc, slotID) then
-          local passArmor = true
-          if not JEWELRY[slotID] and slotID ~= 15 then
-            if (classID ~= ITEMCLASS_ARMOR) or (expectedArmorSubclass and subclassID and subclassID ~= expectedArmorSubclass) then
-              passArmor = false
-            end
-          end
-          if passArmor then
-            local link = info.hyperlink or C_Container.GetContainerItemLink(bag, slot)
-            local ilvl = getItemLevelFromLink(link)
-            if ilvl >= (equippedIlvl - lowerBound) then
-              local itemLoc = ItemLocation:CreateFromBagAndSlot(bag, slot)
-              local guid = itemGUID(itemLoc)
-              if not (used and guid and used[guid]) then
-                local score = nil
-                if comparer and comparer.ScoreItem then
-                  local ok, v = pcall(comparer.ScoreItem, itemLoc, slotID)
-                  if ok and type(v) == "number" then score = v end
-                end
-                if score and (not best or score > best.score) then
-                  best = {
-                    loc        = itemLoc,
-                    guid       = guid,
-                    link       = link,
-                    score      = score,
-                    ilvl       = ilvl,
-                    equipLoc   = equipLoc,
-                    targetSlot = slotID,
-                  }
-                end
+          local link = info.hyperlink or C_Container.GetContainerItemLink(bag, slot)
+          local ilvl = getItemLevelFromLink(link)
+          if ilvl >= (equippedIlvl - lowerBound) then
+            local itemLoc = ItemLocation:CreateFromBagAndSlot(bag, slot)
+            local guid = itemGUID(itemLoc)
+            if not (used and guid and used[guid]) then
+              local score = nil
+              if comparer and comparer.ScoreItem then
+                local ok, v = pcall(comparer.ScoreItem, itemLoc, slotID)
+                if ok and type(v) == "number" then score = v end
+              end
+              if score and (not best or score > best.score) then
+                best = {
+                  loc        = itemLoc,
+                  guid       = guid,
+                  link       = link,
+                  score      = score,
+                  ilvl       = ilvl,
+                  equipLoc   = equipLoc,
+                  targetSlot = slotID,
+                }
               end
             end
           end
@@ -251,6 +243,11 @@ function C:PlanBest(cmp, opts)
         oldLoc      = equipped and equipped.loc or nil,
         scaleValues = pick.scaleValues,
       })
+
+      -- Mark the selected item as used by adding its GUID to the used table
+      if pick.guid then
+        used[pick.guid] = true
+      end
     end
   end
 
