@@ -34,6 +34,7 @@ Core.SLOT_LABEL = {
   [1]="Head", [2]="Neck", [3]="Shoulder", [5]="Chest", [6]="Waist",
   [7]="Legs", [8]="Feet", [9]="Wrist", [10]="Hands", [11]="Ring 1",
   [12]="Ring 2", [13]="Trinket 1", [14]="Trinket 2", [15]="Back",
+  [16] = "Main Hand", [17] = "Off Hand"
 }
 
 -- =========================

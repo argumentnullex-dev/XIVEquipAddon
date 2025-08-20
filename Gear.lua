@@ -22,25 +22,18 @@ function C:PlanBest(cmp, opts)
   -- Require modules (no fallbacks)
   local aChanges, aPending, aPlan = XIVEquip.Armor:PlanBest(cmp, opts, used)
   local jChanges, jPending, jPlan = XIVEquip.Jewelry:PlanBest(cmp, opts, used)
+  local wChanges, wPending, wPlan = XIVEquip.Weapons:PlanBest(cmp, opts, used)
 
   -- Merge armor + jewelry
   for _, r in ipairs(aChanges or {}) do table.insert(changes, r) end
   for _, r in ipairs(jChanges or {}) do table.insert(changes, r) end
+  for _, r in ipairs(wChanges or {}) do table.insert(changes, r) end
   for _, p in ipairs(aPlan or {})    do table.insert(plan,    p) end
   for _, p in ipairs(jPlan or {})    do table.insert(plan,    p) end
+  for _, p in ipairs(wPlan or {})    do table.insert(plan,    p) end
 
-  hadPending = (aPending == true) or (jPending == true)
+  hadPending = (aPending == true) or (jPending == true) or (wPending == true)
 
-  -- Weapons: append only their 'changes' (unchanged behavior)
-  if XIVEquip.Weapons and XIVEquip.Weapons.PlanBest then
-    local wPlan, wChanges, wPending = XIVEquip.Weapons:PlanBest(cmp)
-    if type(wChanges) == "table" then
-      for _, row in ipairs(wChanges) do table.insert(changes, row) end
-    end
-    hadPending = hadPending or wPending or false
-  end
-
-  hadPending = hadPending or (XIVEquip._needsItemRetry == true)
   return changes, hadPending, plan
 end
 
