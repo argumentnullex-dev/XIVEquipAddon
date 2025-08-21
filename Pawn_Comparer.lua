@@ -3,8 +3,7 @@ local addon, XIVEquip = ...
 XIVEquip = XIVEquip or {}
 XIVEquip.Comparers = XIVEquip.Comparers or {}
 local M = XIVEquip.Comparers
-
-local Log = (XIVEquip.Log) or { Debug=function() end, Info=function() end, Warn=function() end, Error=function() end }
+local Log = XIVEquip.Log
 local L = (XIVEquip and XIVEquip.L) or {}
 local AddonPrefix = L.AddonPrefix or "XIVEquip: "
 

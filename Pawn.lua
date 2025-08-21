@@ -7,7 +7,8 @@ XIVEquip = XIVEquip or {}
 
 -- /---------- tiny logger (local chat only) ----------/
 local PREFIX = "|cff66ccffXIVEquip|r"
-local function log(...) print(PREFIX, ...) end
+local Log = XIVEquip.Log
+local function log(...) Log.Debug(PREFIX, ...) end
 
 -- /---------- character key helpers ----------/
 
@@ -41,12 +42,34 @@ end
 -- Choose the best active scale for current spec
 local function getPlayerClassSpec()
   local _, _, classID = UnitClass("player")
-  local specIndex = GetSpecialization and GetSpecialization()
-  local specID
-  if specIndex and GetSpecializationInfo then
-    specID = select(1, GetSpecializationInfo(specIndex))
-  end
-  return classID, specID
+  local specIndex = GetSpecialization()   -- 1..4 (this is what Pawn SV uses)
+  return classID, specIndex
+end
+
+-- /---------- Spec Selection Helpers ---------------------/
+-- Normalize for name comparisons (lowercase, strip spaces/punctuation)
+local function _norm(s)
+  return (tostring(s or ""):lower():gsub("[%s%p]+",""))
+end
+
+-- Does this scale's name "equal" the player's spec name?
+local function _nameEqualsSpec(scaleName, specName)
+  if not scaleName or not specName then return false end
+  local lhs = _norm(scaleName)
+  local rhs = _norm(specName)
+  -- If the scale uses "Class: Spec", compare only the right side too
+  local afterColon = scaleName:match(":%s*(.+)$")
+  if afterColon and _norm(afterColon) == rhs then return true end
+  return lhs == rhs
+end
+
+-- Does this scale's name contain the player's spec name?
+local function _nameContainsSpec(scaleName, specName)
+  if not scaleName or not specName then return false end
+  local s = scaleName:lower()
+  local q = specName:lower()
+  -- Whole-word contains (loose, but avoids partials like "prot" in "prototype")
+  return s:find("%f[%a]"..q.."%f[%A]") ~= nil
 end
 
 -- /---------- SV readers (authoritative source) ----------/
@@ -164,18 +187,40 @@ end
 
 -- Minimal stat map for fallback scoring (custom only)
 local FALLBACK_STATMAP = {
-  ITEM_MOD_STRENGTH_SHORT   = "Strength",
-  ITEM_MOD_AGILITY_SHORT    = "Agility",
-  ITEM_MOD_INTELLECT_SHORT  = "Intellect",
-  ITEM_MOD_STAMINA_SHORT    = "Stamina",
-  ITEM_MOD_CRIT_RATING_SHORT= "CritRating",
-  ITEM_MOD_HASTE_RATING_SHORT="HasteRating",
-  ITEM_MOD_MASTERY_RATING_SHORT="MasteryRating",
-  ITEM_MOD_VERSATILITY      = "Versatility",
-  ITEM_MOD_LIFESTEAL_SHORT  = "Leech",
-  ITEM_MOD_AVOIDANCE_RATING_SHORT = "Avoidance",
-  ITEM_MOD_SPEED_RATING_SHORT     = "MovementSpeed",
-  -- Armor handled via dedicated API below if present in GetItemStats
+
+  ITEM_MOD_STRENGTH              = "Strength",
+  ITEM_MOD_AGILITY               = "Agility",
+  ITEM_MOD_INTELLECT             = "Intellect",
+  ITEM_MOD_STAMINA               = "Stamina",
+  RESISTANCE0_NAME               = "Armor",
+  ITEM_MOD_ARMOR                 = "Armor",
+
+  ITEM_MOD_STRENGTH_SHORT        = "Strength",
+  ITEM_MOD_AGILITY_SHORT         = "Agility",
+  ITEM_MOD_INTELLECT_SHORT       = "Intellect",
+  ITEM_MOD_STAMINA_SHORT         = "Stamina",
+  ITEM_MOD_ARMOR_SHORT           = "Armor",
+
+  ITEM_MOD_CRIT_RATING           = "CritRating",
+  ITEM_MOD_HASTE_RATING          = "HasteRating",
+  ITEM_MOD_MASTERY_RATING        = "MasteryRating",
+  ITEM_MOD_VERSATILITY           = "Versatility",
+
+  ITEM_MOD_CRIT_RATING_SHORT     = "CritRating",
+  ITEM_MOD_HASTE_RATING_SHORT    = "HasteRating",
+  ITEM_MOD_MASTERY_RATING_SHORT  = "MasteryRating",
+
+  ITEM_MOD_AVOIDANCE_RATING= "AvoidanceRating",
+  ITEM_MOD_SPEED_RATING    = "MovementSpeed",
+  ITEM_MOD_LIFESTEAL       = "Leech",
+
+  -- optional, if your scale uses them:
+  ITEM_MOD_DODGE_RATING    = "DodgeRating",
+  ITEM_MOD_PARRY_RATING    = "ParryRating",
+
+  -- if you want sockets to add value and your scale has a weight:
+  EMPTY_SOCKET_PRISMATIC   = "PrismaticSocket",
+  EMPTY_SOCKET_PRISMATIC1  = "PrismaticSocket",
 }
 
 local GetItemStats = GetItemStats or C_Item.GetItemStats
@@ -190,8 +235,37 @@ local function GetItemStatsCompat(itemLink)
 end
 
 local function fallbackScoreWithValues(itemLink, values)
+  if not itemLink then return nil end
+  local equipLoc = select(4, GetItemInfoInstant(itemLink))
+  local slotID = (XIVEquip.Gear_Core and XIVEquip.Gear_Core.INV_BY_EQUIPLOC
+    and XIVEquip.Gear_Core.INV_BY_EQUIPLOC[equipLoc]) or nil
+  if _G.XIVEquip_Debug then
+    Log.Debugf(slotID, "[fallback] weights: Armor=%s Strength=%s Stamina=%s Haste=%s Crit=%s Vers=%s",
+      tostring(values and values.Armor),
+      tostring(values and values.Strength),
+      tostring(values and values.Stamina),
+      tostring(values and values.HasteRating),
+      tostring(values and values.CritRating),
+      tostring(values and values.Versatility))
+  end
   local stats = GetItemStatsCompat(itemLink)
   if type(stats) ~= "table" then return nil end
+  if _G.XIVEquip_Debug then
+    Log.Debugf(slotID, "[fallback] "..tostring(itemLink))
+    for k, v in pairs(stats) do
+      Log.Debugf(slotID, "key: %s - value: %s", k, v)
+      local pawnKey = FALLBACK_STATMAP[k]
+      if pawnKey and values[pawnKey] then
+          Log.Debugf(slotId, tostring(pawnKey))
+          Log.Debugf(slotID, "  + %s %s %s → %s × %s = %s",
+            tostring(pawnKey),
+            tostring(k), tostring(v), tostring(pawnKey), tostring(values[pawnKey]),
+            tostring(v * (values[pawnKey] or 0)))
+      else
+        Log.Debugf(slotID, "  (ignored) %s %s %s", tostring(pawnKey), tostring(k), tostring(v))
+      end
+    end
+  end
   local score = 0
   for k, pawnKey in pairs(FALLBACK_STATMAP) do
     local amount = stats[k]
@@ -202,21 +276,63 @@ local function fallbackScoreWithValues(itemLink, values)
   return score
 end
 
+-- Prefer: exact id match > exact name match > contains name > class match > any
 local function chooseBestActiveScaleForPlayer()
-  local classID, specID = getPlayerClassSpec()
-  local act = getActiveScales()
-  local exact, classOnly, any
+  local _, classFile, classID = UnitClass("player")
+  local specIndex = GetSpecialization() or 0
+  local specName  = (specIndex > 0 and select(2, GetSpecializationInfo(specIndex))) or ""
+
+  local act = getActiveScales() or {}
+
+  local idExactCustom, idExactAny
+  local nameExactCustom, nameExactAny
+  local nameHasCustom,  nameHasAny
+  local classCustom,    classAny
+  local any
+
   for _, r in ipairs(act) do
-    if r.class == classID then
-      if r.spec and specID and r.spec == specID then
-        exact = exact or r
-      else
-        classOnly = classOnly or r
+    any = any or r
+    local isCustom = (r.type == "custom")
+    local classOK  = (r.class == nil) or (r.class == classID)
+
+    -- 1) Exact class+spec index, if the record actually has it
+    if classOK and r.spec and specIndex > 0 and r.spec == specIndex then
+      if isCustom then idExactCustom = idExactCustom or r
+      else            idExactAny    = idExactAny    or r end
+    else
+      -- 2) Name-based matching (specname)
+      local nm = r.name or r.key
+      if _nameEqualsSpec(nm, specName) then
+        if isCustom then nameExactCustom = nameExactCustom or r
+        else            nameExactAny    = nameExactAny    or r end
+      elseif _nameContainsSpec(nm, specName) then
+        if isCustom then nameHasCustom = nameHasCustom or r
+        else            nameHasAny    = nameHasAny    or r end
+      elseif classOK then
+        -- 3) class match as a weaker fallback
+        if isCustom then classCustom = classCustom or r
+        else            classAny    = classAny    or r end
       end
     end
-    any = any or r
   end
-  return exact or classOnly or any
+
+  local picked = idExactCustom or idExactAny
+              or nameExactCustom or nameExactAny
+              or nameHasCustom   or nameHasAny
+              or classCustom     or classAny
+              or any
+
+  -- Optional: one debug line; use "force" to bypass slot filter
+  if _G.XIVEquip_Debug and XIVEquip and XIVEquip.Log and XIVEquip.Log.Debugf then
+    XIVEquip.Log.Debugf("force",
+      "Pawn.choose: class=%s(%s) specIndex=%s specName=%s -> picked name=%s key=%s type=%s src=%s (r.spec=%s)",
+      tostring(classID), tostring(classFile), tostring(specIndex), tostring(specName),
+      tostring(picked and picked.name), tostring(picked and picked.key),
+      tostring(picked and picked.type), tostring(picked and picked.source),
+      tostring(picked and picked and picked.spec))
+  end
+
+  return picked
 end
 
 -- Core scoring helpers
@@ -369,7 +485,7 @@ local function printDump(rest)
   local ks = {}
   for k in pairs(vals) do ks[#ks+1]=k end
   table.sort(ks)
-  local shown, limit = 0, 25
+  local shown, limit = 0, 100
   for _, k in ipairs(ks) do
     print(PREFIX, k, "=", tostring(vals[k]))
     shown = shown + 1

@@ -1,44 +1,31 @@
 -- Gear_Core.lua
 local addonName, XIVEquip = ...
 local Core = {}
+local Log = XIVEquip.Log
+local Const = XIVEquip.Const
 XIVEquip.Gear_Core = Core
 
 -- =========================
 -- Public constants/lookups (unchanged)
 -- =========================
 
-Core.ARMOR_SLOTS = { 1,2,3,5,6,7,8,9,10,15, 11,12, 13,14 } -- head..cloak, rings x2, trinkets x2
-Core.JEWELRY     = { [2]=true, [15]=true, [11]=true, [12]=true, [13]=true, [14]=true }
+Core.ARMOR_SLOTS = Const.ARMOR_SLOTS
+Core.JEWELRY     = Const.JEWELRY
+Core.LOWER_ILVL_ARMOR   = Const.LOWER_ILVL_ARMOR
+Core.LOWER_ILVL_JEWELRY = Const.LOWER_ILVL_JEWELRY
+Core.INV_BY_EQUIPLOC = Const.INV_BY_EQUIPLOC
+Core.SLOT_EQUIPLOCS = Const.SLOT_EQUIPLOCS
+Core.ITEMCLASS_ARMOR = Const.ITEMCLASS_ARMOR
+Core.SLOT_LABEL = Const.SLOT_LABEL
 
-Core.LOWER_ILVL_ARMOR   = 20
-Core.LOWER_ILVL_JEWELRY = 40
-
-Core.INV_BY_EQUIPLOC = {
-  INVTYPE_HEAD=1, INVTYPE_NECK=2, INVTYPE_SHOULDER=3, INVTYPE_BODY=4, INVTYPE_CHEST=5, INVTYPE_ROBE=5,
-  INVTYPE_WAIST=6, INVTYPE_LEGS=7, INVTYPE_FEET=8, INVTYPE_WRIST=9, INVTYPE_HAND=10,
-  INVTYPE_FINGER=11, INVTYPE_TRINKET=13, INVTYPE_CLOAK=15, INVTYPE_HOLDABLE=17, INVTYPE_SHIELD=17,
-}
-
-Core.SLOT_EQUIPLOCS = {
-  [1]  = { INVTYPE_HEAD=true },   [2]  = { INVTYPE_NECK=true },   [3]  = { INVTYPE_SHOULDER=true },
-  [5]  = { INVTYPE_CHEST=true, INVTYPE_ROBE=true },              [6]  = { INVTYPE_WAIST=true },
-  [7]  = { INVTYPE_LEGS=true },   [8]  = { INVTYPE_FEET=true },   [9]  = { INVTYPE_WRIST=true },
-  [10] = { INVTYPE_HAND=true },   [15] = { INVTYPE_CLOAK=true },
-  [11] = { INVTYPE_FINGER=true }, [12] = { INVTYPE_FINGER=true },
-  [13] = { INVTYPE_TRINKET=true },[14] = { INVTYPE_TRINKET=true },
-}
-
-Core.ITEMCLASS_ARMOR = 4
-
-Core.SLOT_LABEL = {
-  [1]="Head", [2]="Neck", [3]="Shoulder", [5]="Chest", [6]="Waist",
-  [7]="Legs", [8]="Feet", [9]="Wrist", [10]="Hands", [11]="Ring 1",
-  [12]="Ring 2", [13]="Trinket 1", [14]="Trinket 2", [15]="Back",
-  [16] = "Main Hand", [17] = "Off Hand"
-}
+local function debugf(slotID, fmt, ...)
+  if Log and Log.Debugf then
+    return Log.Debugf(slotID, fmt, ...)
+  end
+end
 
 -- =========================
--- Public helpers (logic unchanged)
+-- Public helpers
 -- =========================
 
 -- guarded comparer call used by planners (returns 0 on error)
@@ -168,8 +155,9 @@ do
 
   local EPS = 1e-6
 
-  -- Exported: Core.chooseForSlot (slot-agnostic; works for jewelry as-is)
+    -- Exported: Core.chooseForSlot (slot-agnostic; works for jewelry as-is)
   function Core.chooseForSlot(comparer, slotID, expectedArmorSubclass, used)
+    local dbg = debugf
     local equipped = equippedBasics(slotID, comparer)
     local equippedIlvl   = (equipped and equipped.ilvl) or 0
     local equippedScore  = (equipped and equipped.score) or nil
@@ -184,8 +172,12 @@ do
         if info and info.itemID then
           local _, _, _, equipLoc, _, classID, subclassID = GetItemInfoInstant(info.itemID)
           if equipLoc and equipLocMatchesSlot(equipLoc, slotID) then
+            if dbg then dbg(slotID, "consider itemID=%s equipLoc=%s", tostring(info.itemID), tostring(equipLoc)) end
+
             local link = info.hyperlink or C_Container.GetContainerItemLink(bag, slot)
             local ilvl = getItemLevelFromLink(link)
+            if dbg then dbg(slotID, "candidate ilvl=%s link=%s", tostring(ilvl or "nil"), tostring(link or "nil")) end
+
             if ilvl >= (equippedIlvl - lowerBound) then
               local itemLoc = ItemLocation:CreateFromBagAndSlot(bag, slot)
               local guid = itemGUID(itemLoc)
@@ -195,7 +187,19 @@ do
                   local ok, v = pcall(comparer.ScoreItem, itemLoc, slotID)
                   if ok and type(v) == "number" then score = v end
                 end
+                if dbg then
+                  if score then
+                    dbg(slotID, "scored: %s", tostring(score))
+                  else
+                    dbg(slotID, "skip: no score from comparer")
+                  end
+                end
                 if score and (not best or score > best.score) then
+                  if dbg then
+                    dbg(slotID, "new best: score=%s ilvl=%s link=%s (prev=%s)",
+                      tostring(score), tostring(ilvl), tostring(link or "nil"),
+                      tostring(best and best.score or "nil"))
+                  end
                   best = {
                     loc        = itemLoc,
                     guid       = guid,
@@ -206,7 +210,12 @@ do
                     targetSlot = slotID,
                   }
                 end
+              else
+                if dbg then dbg(slotID, "skip: already used guid=%s link=%s", tostring(guid), tostring(link or "nil")) end
               end
+            else
+              if dbg then dbg(slotID, "skip: below lower bound (cand=%s, equipped=%s, bound=%s)",
+                tostring(ilvl or "nil"), tostring(equippedIlvl or "nil"), tostring(lowerBound)) end
             end
           end
         end
@@ -217,13 +226,19 @@ do
     if best then
       if equippedScore ~= nil then
         if best.score <= (equippedScore + EPS) then
+          if dbg then dbg(slotID, "reject: score-not-better (best=%s, equipped=%s)",
+            tostring(best.score), tostring(equippedScore)) end
           return nil, equipped
         end
       else
         if best.ilvl <= equippedIlvl then
+          if dbg then dbg(slotID, "reject: ilvl-not-better (best=%s, equipped=%s)",
+            tostring(best.ilvl), tostring(equippedIlvl)) end
           return nil, equipped
         end
       end
+    else
+      if dbg then dbg(slotID, "no candidate passed filters") end
     end
 
     return best, equipped
@@ -265,10 +280,29 @@ end
 -- Returns pick, equipped, chosen (boolean).
 function Core.tryChooseAppend(plan, changes, slotID, comparer, expectedArmorSubclass, used)
   local pick, equipped = Core.chooseForSlot(comparer, slotID, expectedArmorSubclass, used)
-  if pick then
-    Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
-    if pick.guid and used then used[pick.guid] = true end
-    return pick, equipped, true
+
+  -- No pick: log and return
+  if not pick then
+    if debugf then
+      debugf(slotID, "no pick; equipped ilvl=%s score=%s link=%s",
+        tostring(equipped and equipped.ilvl or "nil"),
+        tostring(equipped and equipped.score or "nil"),
+        tostring(equipped and equipped.link or "nil"))
+    end
+    return nil, equipped, false
   end
-  return nil, equipped, false
+
+  -- We have a pick: log, append, mark used
+  if debugf then
+    debugf(slotID, "picked ilvl=%s score=%s link=%s  vs equipped ilvl=%s score=%s",
+      tostring(pick.ilvl or "nil"),
+      tostring(pick.score or "nil"),
+      tostring(pick.link or "nil"),
+      tostring(equipped and equipped.ilvl or "nil"),
+      tostring(equipped and equipped.score or "nil"))
+  end
+
+  Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
+  if pick.guid and used then used[pick.guid] = true end
+  return pick, equipped, true
 end

@@ -5,6 +5,7 @@
 ## Version: 0.1.0
 ## SavedVariables: XIVEquip_Settings
 
+Constants.lua
 Localization.lua
 Logger.lua
 Hooks.lua
