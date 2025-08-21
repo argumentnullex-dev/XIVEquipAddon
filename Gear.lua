@@ -11,9 +11,54 @@ XIVEquip.Gear = C
 
 local equipByBasics = Core.equipByBasics
 
+-- Upvalue to coalesce multiple save requests
+local _pendingSpecSaveToken
+
+
 -- =========================
 -- Public API
 -- =========================
+
+-- Save the current equipment into a "Spec.xive" set *after* spec has stabilized.
+-- Delay defaults to ~0.7s; bumped if needed.
+function C:_saveSpecSetSoon(delay)
+  delay = delay or 0.7
+  local token = {}
+  _pendingSpecSaveToken = token
+
+  C_Timer.After(delay, function()
+    -- If a newer request came in, skip this one
+    if _pendingSpecSaveToken ~= token then return end
+    if InCombatLockdown() then return end
+
+    -- Re-read the *current* spec now (don’t use any captured value)
+    local idx = GetSpecialization()
+    local specName = (idx and select(2, GetSpecializationInfo(idx))) or "Unknown"
+    local setName  = string.format("%s.xive", specName)
+
+    if not C_EquipmentSet or not C_EquipmentSet.GetEquipmentSetID then
+      print((L.AddonPrefix or "XIVEquip: ") .. (L.SpecAuto_NoEM or "Cannot save equipment set: Equipment Manager API not available."))
+      return
+    end
+
+    -- Ensure the set exists
+    local setID = C_EquipmentSet.GetEquipmentSetID(setName)
+    if not setID then
+      -- Use the paperdoll icon as a harmless default if you don't have a favorite
+      local icon = 134400
+      C_EquipmentSet.CreateEquipmentSet(setName, icon)
+      setID = C_EquipmentSet.GetEquipmentSetID(setName)
+    end
+
+    -- Save the currently equipped items
+    if setID then
+      C_EquipmentSet.SaveEquipmentSet(setID)
+      if not (_G.XIVEquip_Settings and _G.XIVEquip_Settings.Messages and _G.XIVEquip_Settings.Messages.Equip == false) then
+        print((L.AddonPrefix or "XIVEquip: ") .. string.format(L.SpecAuto_Saved or "Saved equipment set '%s'.", setName))
+      end
+    end
+  end)
+end
 
 -- PlanBest returns (changes, pending, plan)
 function C:PlanBest(cmp, opts)
@@ -73,7 +118,10 @@ function C:EquipBest()
 
   Comparers:EndPass()
 
-  C:SaveEquippedToSpecSet()
+  -- After equipping (and outside combat), queue a deferred save to the spec-named set
+  if not InCombatLockdown() then
+    C:_saveSpecSetSoon(0.7)
+  end
 end
 
 -- =========================

@@ -1,6 +1,9 @@
+-- UI.lua
 local addon, XIVEquip = ...
+XIVEquip = XIVEquip or {}
 local L = (XIVEquip and XIVEquip.L) or {}
 
+-- Return map of comparer internal names -> display labels
 local function comparerNames()
   local list = { ["default"] = L.Settings_Default or "Auto (Pawn → ilvl)" }
   if XIVEquip.Comparers and XIVEquip.Comparers.All then
@@ -16,10 +19,12 @@ local function BuildSettingsPanel()
   local panel = CreateFrame("Frame")
   panel.name = L.Settings_Title or "XIVEquip"
 
+  -- Title
   local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", 16, -16)
   title:SetText(L.Settings_Title or "XIVEquip")
 
+  -- Description
   local desc = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
   desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
   desc:SetWidth(520)
@@ -56,13 +61,14 @@ local function BuildSettingsPanel()
   ddLabel:SetPoint("BOTTOMLEFT", dd, "TOPLEFT", 16, 4)
   ddLabel:SetText(L.Settings_ActiveLabel or "Active comparer")
 
-  -- Messages
+  -- Messages: login
   local cbLogin = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
   cbLogin:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 18, -16)
   cbLogin.Text:SetText(L.Settings_LoginMsgs or "Show login message")
   cbLogin:SetChecked(s.Messages.Login)
   cbLogin:SetScript("OnClick", function(self) s.Messages.Login = self:GetChecked() end)
 
+  -- Messages: equip
   local cbEquip = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
   cbEquip:SetPoint("TOPLEFT", cbLogin, "BOTTOMLEFT", 0, -8)
   cbEquip.Text:SetText(L.Settings_EquipMsgs or "Show equip messages")
@@ -76,80 +82,20 @@ local function BuildSettingsPanel()
   cbDebug:SetChecked(s.Debug and true or false)
   cbDebug:SetScript("OnClick", function(self) s.Debug = self:GetChecked() and true or false end)
 
-  -- Weapon mode
-  local ddMode = CreateFrame("Frame", nil, panel, "UIDropDownMenuTemplate")
-  ddMode:SetPoint("TOPLEFT", cbDebug, "BOTTOMLEFT", -16, -20)
-  UIDropDownMenu_SetWidth(ddMode, 260)
-  local ddModeLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  ddModeLabel:SetPoint("BOTTOMLEFT", ddMode, "TOPLEFT", 16, 4)
-  ddModeLabel:SetText(L.Settings_WeaponModeLabel or "Weapon mode")
-
-  local modes = {
-    { val="AUTO",      txt=L.Settings_WeaponMode_Auto or "Auto" },
-    { val="TWOHAND",   txt=L.Settings_WeaponMode_2H or "Two-Hand" },
-    { val="DUAL_1H",   txt=L.Settings_WeaponMode_Dual1H or "Dual 1H" },
-    { val="DUAL_2H",   txt=L.Settings_WeaponMode_Dual2H or "Dual 2H (TG)" },
-    { val="MH_SHIELD", txt=L.Settings_WeaponMode_MHShield or "MH + Shield" },
-    { val="MH_OFFHAND",txt=L.Settings_WeaponMode_MHOffhand or "MH + Off-hand (Frill)" },
-  }
-  UIDropDownMenu_Initialize(ddMode, function(self, level)
-    local info
-    for _, m in ipairs(modes) do
-      info = UIDropDownMenu_CreateInfo()
-      info.text = m.txt
-      info.func = function()
-        s.Weapons.Mode = m.val
-        UIDropDownMenu_SetText(ddMode, m.txt)
-      end
-      info.checked = (s.Weapons.Mode == m.val)
-      UIDropDownMenu_AddButton(info, level)
-    end
+  -- Auto-equip on spec change (NEW)
+  local cbAuto = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
+  cbAuto:SetPoint("TOPLEFT", cbDebug, "BOTTOMLEFT", 0, -8)
+  cbAuto.Text:SetText(L.Settings_AutoSpecEquip or "Auto-equip & save set on spec change")
+  cbAuto:SetChecked(s.AutoSpecEquip ~= false)
+  cbAuto:SetScript("OnClick", function(self)
+    s.AutoSpecEquip = self:GetChecked() and true or false
   end)
-  do
-    local cur = s.Weapons.Mode or "AUTO"
-    local map = {}; for _, m in ipairs(modes) do map[m.val]=m.txt end
-    UIDropDownMenu_SetText(ddMode, map[cur] or (L.Settings_WeaponMode_Auto or "Auto"))
-    if not map[cur] then s.Weapons.Mode = "AUTO" end
-  end
 
-  -- Bias
-  local ddBias = CreateFrame("Frame", nil, panel, "UIDropDownMenuTemplate")
-  ddBias:SetPoint("TOPLEFT", ddMode, "BOTTOMLEFT", 0, -16)
-  UIDropDownMenu_SetWidth(ddBias, 260)
-  local ddBiasLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  ddBiasLabel:SetPoint("BOTTOMLEFT", ddBias, "TOPLEFT", 16, 4)
-  ddBiasLabel:SetText(L.Settings_WeaponBiasLabel or "Weapon bias")
-
-  local biases = {
-    { val="AUTO",    txt=L.Settings_WeaponBias_Auto or "Auto" },
-    { val="PREF_2H", txt=L.Settings_WeaponBias_Pref2H or "Prefer 2H" },
-    { val="PREF_DW", txt=L.Settings_WeaponBias_PrefDW or "Prefer Dual Wield" },
-    { val="PREF_1H", txt=L.Settings_WeaponBias_Pref1H or "Prefer 1H + off-hand" },
-    { val="NONE",    txt=L.Settings_WeaponBias_None or "No bias" },
-  }
-  UIDropDownMenu_Initialize(ddBias, function(self, level)
-    local info
-    for _, b in ipairs(biases) do
-      info = UIDropDownMenu_CreateInfo()
-      info.text = b.txt
-      info.func = function()
-        s.Weapons.Bias = b.val
-        UIDropDownMenu_SetText(ddBias, b.txt)
-      end
-      info.checked = (s.Weapons.Bias == b.val)
-      UIDropDownMenu_AddButton(info, level)
-    end
-  end)
-  do
-    local cur = s.Weapons.Bias or "AUTO"
-    local map = {}; for _, b in ipairs(biases) do map[b.val]=b.txt end
-    UIDropDownMenu_SetText(ddBias, map[cur] or (L.Settings_WeaponBias_Auto or "Auto"))
-  end
-
-  -- License / footer
+  -- Footer / license (anchor fixed; ddBias was undefined)
   local lic = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  lic:SetPoint("TOPLEFT", ddBias, "BOTTOMLEFT", 16, -14)
-  lic:SetWidth(520); lic:SetJustifyH("LEFT")
+  lic:SetPoint("TOPLEFT", cbAuto, "BOTTOMLEFT", 16, -14)
+  lic:SetWidth(520)
+  lic:SetJustifyH("LEFT")
   lic:SetText(L.Settings_License or "Inspired by FFXIV. Pawn © their authors.")
 
   return panel
@@ -162,12 +108,15 @@ f:SetScript("OnEvent", function(_, e, name)
   if e == "ADDON_LOADED" and name == addon then
     XIVEquip_Settings = XIVEquip_Settings or {}
     local s = XIVEquip_Settings
+
+    -- Defaults
     s.SelectedComparer = s.SelectedComparer or "default"
     s.Messages = s.Messages or { Login = true, Equip = true }
     s.Weapons  = s.Weapons  or {}
     s.Weapons.Mode = s.Weapons.Mode or "AUTO"
     s.Weapons.Bias = s.Weapons.Bias or "AUTO"
-    s.Debug = (s.Debug == nil) and false or s.Debug  -- << default debug flag
+    s.Debug = (s.Debug == nil) and false or s.Debug
+    s.AutoSpecEquip = (s.AutoSpecEquip ~= false)  -- default ON unless explicitly false
 
     if Settings and Settings.RegisterCanvasLayoutCategory then
       local panel = BuildSettingsPanel()
