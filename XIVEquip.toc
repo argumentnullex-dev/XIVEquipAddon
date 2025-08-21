@@ -5,6 +5,9 @@
 ## Version: 0.1.0
 ## SavedVariables: XIVEquip_Settings
 
+# Don’t hard-block the addon when Pawn isn’t installed:
+## OptionalDeps: Pawn
+
 Constants.lua
 Localization.lua
 Logger.lua
