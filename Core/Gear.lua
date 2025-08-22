@@ -187,7 +187,7 @@ do
             -- Prefer the runtime/current item level for bag items when available (handles heirlooms)
             local itemLoc = nil
             if type(ItemLocation) == "table" and type(ItemLocation.CreateFromBagAndSlot) == "function" then
-              itemLoc = ItemLocation.CreateFromBagAndSlot(bag, slot)
+              itemLoc = ItemLocation:CreateFromBagAndSlot(bag, slot)
             end
             local ilvl = nil
             if itemLoc and C_Item and C_Item.GetCurrentItemLevel then
@@ -199,13 +199,15 @@ do
 
             -- Treat ilvl == 1 (heirloom reported as level 1) as "unknown" and don't reject it
             local passesLowerBound = (type(ilvl) == "number") and ((ilvl == 1) or ilvl >= (equippedIlvl - lowerBound))
-            print(tostring(passesLowerBound))
             if passesLowerBound then
               local itemLoc = (type(ItemLocation) == "table" and type(ItemLocation.CreateFromBagAndSlot) == "function") and
-                  ItemLocation.CreateFromBagAndSlot(bag, slot) or nil
+                  ItemLocation:CreateFromBagAndSlot(bag, slot) or nil
               local guid = itemGUID(itemLoc)
               if not (used and guid and used[guid]) then
                 local score = nil
+                if itemLoc and C_Item and C_Item.RequestLoadItemData then
+                  pcall(C_Item.RequestLoadItemData, itemLoc)
+                end
                 if comparer and comparer.ScoreItem then
                   local ok, v = pcall(comparer.ScoreItem, itemLoc, slotID)
                   if ok and type(v) == "number" then score = v end
@@ -336,25 +338,43 @@ function Core.tryChooseAppend(plan, changes, slotID, comparer, expectedArmorSubc
   return pick, equipped, true
 end
 
--- Small helpers
+-- Resolve an item link from an ItemLocation or slotID (unchanged logic)
 function Core.linkFromLocation(location)
-  -- Try the C_Item API with the provided location (works for ItemLocation userdata or tables)
+  if not location then return nil end
+
+  -- 1) Try the modern API directly (works for ItemLocation userdata/tables)
   if C_Item and C_Item.GetItemLink then
     local ok, link = pcall(C_Item.GetItemLink, location)
     if ok and link then return link end
   end
-  -- If a numeric inventory slot was passed, try the legacy API
+
+  -- 2) If it's an equipment slot id, use the legacy inventory API
   if type(location) == "number" and GetInventoryItemLink then
     local ok, link = pcall(GetInventoryItemLink, "player", location)
     if ok and link then return link end
   end
-  -- If we have an ItemLocation object, attempt to get an equipment slot and use inventory API
-  if type(location) == "table" and GetInventoryItemLink and type(location.GetEquipmentSlot) == "function" then
-    local ok, slot = pcall(location.GetEquipmentSlot, location)
-    if ok and type(slot) == "number" then
-      local ok2, link = pcall(GetInventoryItemLink, "player", slot)
-      if ok2 and link then return link end
+
+  -- 3) If it's a bag location (either our table or an ItemLocation with accessors), use container API
+  local bag, slot = nil, nil
+  if type(location) == "table" then
+    bag, slot = location.bagID, location.slotIndex
+    if (not bag or not slot) and type(location.GetBagAndSlot) == "function" then
+      local ok, b, s = pcall(location.GetBagAndSlot, location)
+      if ok then bag, slot = b, s end
+    end
+    if bag ~= nil and slot ~= nil and C_Container and C_Container.GetContainerItemLink then
+      local ok, link = pcall(C_Container.GetContainerItemLink, bag, slot)
+      if ok and link then return link end
     end
   end
+
+  -- 4) As a last resort, request a load then retry C_Item.GetItemLink once more
+  if C_Item and C_Item.RequestLoadItemData and C_Item.DoesItemExist and C_Item.GetItemLink then
+    local okExist = pcall(C_Item.DoesItemExist, location)
+    if okExist then pcall(C_Item.RequestLoadItemData, location) end
+    local ok, link = pcall(C_Item.GetItemLink, location)
+    if ok and link then return link end
+  end
+
   return nil
 end

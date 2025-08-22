@@ -32,7 +32,7 @@ M:RegisterComparer("Pawn", {
       local v = select(1, XIVEquip.Pawn.ScoreItemLink(link, slotID))
       return tonumber(v) or 0
     end
-    print("Failed to score item in Pawn comparer")
+    Log:Debug("Failed to score item in Pawn comparer")
     return 0
   end,
 
