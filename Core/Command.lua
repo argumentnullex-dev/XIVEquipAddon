@@ -153,7 +153,12 @@ C.RegisterRoot("score", function(rest)
   if not link then
     print(PREFIX .. "Usage: /xive score <itemLink>"); return
   end
-  if XIVEquip.PawnScoreLinkAuto then
+  if XIVEquip.Pawn and type(XIVEquip.Pawn.ScoreItemLink) == "function" then
+    local v, src = XIVEquip.Pawn.ScoreItemLink(link)
+    if v then
+      print(PREFIX .. (" Score: %.2f (%s)"):format(v, src or "?")); return
+    end
+  elseif XIVEquip.PawnScoreLinkAuto then
     local v, src = XIVEquip.PawnScoreLinkAuto(link)
     if v then
       print(PREFIX .. (" Score: %.2f (%s)"):format(v, src or "?")); return

@@ -62,5 +62,13 @@ function XIVEquip:EquipBestGear()
     msgError(L.NoComparer)
     return
   end
+  -- Debug helper: when user enabled debug, print active comparer & Pawn tooltip header
+  if _G.XIVEquip_Settings and _G.XIVEquip_Settings.Debug then
+    local act = (XIVEquip.Comparers and XIVEquip.Comparers:GetActiveName()) or "nil"
+    print((L.AddonPrefix or "XIVEquip: ") .. "Debug: active comparer=" .. tostring(act))
+    if XIVEquip.Pawn and type(XIVEquip.Pawn.GetTooltipHeader) == "function" then
+      print((L.AddonPrefix or "XIVEquip: ") .. "Debug: " .. tostring(XIVEquip.Pawn.GetTooltipHeader()))
+    end
+  end
   XIVEquip.Gear:EquipBest()
 end

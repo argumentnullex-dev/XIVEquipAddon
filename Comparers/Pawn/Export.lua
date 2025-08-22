@@ -5,20 +5,8 @@ XIVEquip.Comparers = XIVEquip.Comparers or {}
 local M = XIVEquip.Comparers
 local Log = XIVEquip.Log
 local L = (XIVEquip and XIVEquip.L) or {}
+local Core = XIVEquip.Gear_Core
 local AddonPrefix = L.AddonPrefix or "XIVEquip: "
-
--- Small helpers
-local function linkFromLocation(location)
-  if C_Item and C_Item.GetItemLink and type(location)=="table" then
-    local ok, link = pcall(C_Item.GetItemLink, location)
-    if ok and link then return link end
-  end
-  if type(location)=="number" and GetInventoryItemLink then
-    local ok, link = pcall(GetInventoryItemLink, "player", location)
-    if ok and link then return link end
-  end
-  return nil
-end
 
 -- The comparer
 M:RegisterComparer("Pawn", {
@@ -26,45 +14,32 @@ M:RegisterComparer("Pawn", {
 
   -- Available if we can list active scales & there is at least one
   IsAvailable = function()
-    return type(XIVEquip.GetActivePawnScales) == "function"
-       and #(XIVEquip.GetActivePawnScales() or {}) > 0
+    return XIVEquip.Pawn and type(XIVEquip.Pawn.GetActiveScales) == "function"
+        and #((XIVEquip.Pawn.GetActiveScales and XIVEquip.Pawn.GetActiveScales()) or {}) > 0
   end,
 
   -- Usable for this pass if there’s ≥1 active scale (per-character)
   PrePass = function()
-    local list = (type(XIVEquip.GetActivePawnScales) == "function") and XIVEquip.GetActivePawnScales() or {}
+    local list = (XIVEquip.Pawn and type(XIVEquip.Pawn.GetActiveScales) == "function") and
+        XIVEquip.Pawn.GetActiveScales() or {}
     return #list > 0
   end,
 
-  -- Score an item by ItemLocation or slot id
-  ScoreItem = function(location)
-    -- Prefer the helper if exported
-    if type(XIVEquip.PawnScoreLocationAuto) == "function" then
-      local v = select(1, XIVEquip.PawnScoreLocationAuto(location))
+  -- Score an item by ItemLocation
+  ScoreItem = function(location, slotID) -- slot id is passed as a convenience
+    local link = Core.linkFromLocation(location)
+    if link and XIVEquip.Pawn and type(XIVEquip.Pawn.ScoreItemLink) == "function" then
+      local v = select(1, XIVEquip.Pawn.ScoreItemLink(link, slotID))
       return tonumber(v) or 0
     end
-    -- Fallback: get link and use link-based helper
-    local link = linkFromLocation(location)
-    if link and type(XIVEquip.PawnScoreLinkAuto) == "function" then
-      local v = select(1, XIVEquip.PawnScoreLinkAuto(link))
-      return tonumber(v) or 0
-    end
+    print("Failed to score item in Pawn comparer")
     return 0
   end,
 
   GetActiveTooltipHeader = function()
-    return XIVEquip.PawnGetActiveTooltipHeader()
-  end,
-
-  -- Optional: richer debug info (value, source, scale used)
-  DebugScore = function(location)
-    if type(XIVEquip.PawnScoreLocationAuto) == "function" then
-      return XIVEquip.PawnScoreLocationAuto(location)  -- v, src, scaleEntry
+    if XIVEquip.Pawn and type(XIVEquip.Pawn.GetTooltipHeader) == "function" then
+      return XIVEquip.Pawn.GetTooltipHeader()
     end
-    local link = linkFromLocation(location)
-    if link and type(XIVEquip.PawnScoreLinkAuto) == "function" then
-      return XIVEquip.PawnScoreLinkAuto(link)
-    end
-    return nil, "no-link"
-  end,
+    return ""
+  end
 })

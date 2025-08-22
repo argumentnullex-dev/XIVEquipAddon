@@ -20,8 +20,8 @@ Cmd.RegisterNamespace("pawn", function(rest)
     -- Pawn: List Scale Names and Details
   elseif sub == "scales" then
     local all = (tail and tail:lower():find("all")) ~= nil
-    local list = all and (XIVEquip.PawnGetAllScales and XIVEquip.PawnGetAllScales() or {})
-        or (XIVEquip.PawnGetActiveScales and XIVEquip.PawnGetActiveScales() or {})
+    local list = all and (XIVEquip.Pawn and XIVEquip.Pawn.GetAllScales and XIVEquip.Pawn.GetAllScales() or {})
+        or (XIVEquip.Pawn and XIVEquip.Pawn.GetActiveScales and XIVEquip.Pawn.GetActiveScales() or {})
     if #list == 0 then
       print("  (none)")
       return
@@ -30,7 +30,7 @@ Cmd.RegisterNamespace("pawn", function(rest)
       XIVEquip          = XIVEquip or {}
       XIVEquip.Commands = XIVEquip.Commands or {}
 
-      local Settings    = XIVEquip.Settings     -- must load Core/Settings.lua BEFORE this file
+      local Settings    = XIVEquip.Settings -- must load Core/Settings.lua BEFORE this file
       local C           = XIVEquip.Commands
       local L           = XIVEquip.L or {}
       local PREFIX      = L.AddonPrefix or "XIVEquip: "
@@ -227,18 +227,21 @@ Cmd.RegisterNamespace("pawn", function(rest)
   elseif sub == "weights" then
     local q = tail and tail:match("scale%s+(.+)$") or tail
     local entry = nil
-    if q and XIVEquip.PawnGetAllScales then
-      for _, r in ipairs(XIVEquip.PawnGetAllScales()) do
+    if q and XIVEquip.Pawn and XIVEquip.Pawn.GetAllScales then
+      for _, r in ipairs(XIVEquip.Pawn.GetAllScales()) do
         if (r.name and r.name:lower() == q:lower()) or (r.key and r.key:lower() == q:lower()) then
           entry = r; break
         end
       end
     end
-    if not entry and XIVEquip.PawnBestActiveScale then entry = XIVEquip.PawnBestActiveScale() end
+    if not entry and XIVEquip.Pawn and XIVEquip.Pawn.GetActiveScales then
+      local best = (XIVEquip.Pawn and XIVEquip.Pawn.GetActiveScales) and XIVEquip.Pawn.GetActiveScales() or {}
+      entry = (best and best[1]) or nil
+    end
     if not entry then
       print("  No Pawn scale found."); return
     end
-    local vals = XIVEquip.GetPawnScaleValues and select(1, XIVEquip.GetPawnScaleValues(entry)) or entry.values
+    local vals = (entry and entry.values) or nil
     print("  Weights for:", entry.name or entry.key or "?")
     if type(vals) ~= "table" then
       print("   (no table available)"); return
@@ -253,8 +256,8 @@ Cmd.RegisterNamespace("pawn", function(rest)
     if not link then
       print("  Usage: /xive pawn score <link> [scale <name>]"); return
     end
-    if XIVEquip.PawnScoreLinkAuto then
-      local v, src = XIVEquip.PawnScoreLinkAuto(link)
+    if XIVEquip.Pawn and XIVEquip.Pawn.ScoreItemLink then
+      local v, src = XIVEquip.Pawn.ScoreItemLink(link)
       print(string.format("  Score: %.2f (%s)", tonumber(v) or 0, src or "pawn"))
     else
       print("  Pawn scoring not available.")

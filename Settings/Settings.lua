@@ -9,17 +9,18 @@ local L = (XIVEquip and XIVEquip.L) or {}
 
 -- LSP annotations for UI widgets and helpers
 ---@type fun(frameType: string, name: string?, parent: table?, template: string?): Frame
-local CreateFrame
+-- (don't shadow the global CreateFrame at file scope; use the global at call time)
+
 ---@type fun(frame: Frame, w: number)
-local UIDropDownMenu_SetWidth
+local UIDropDownMenu_SetWidth = _G.UIDropDownMenu_SetWidth or UIDropDownMenu_SetWidth
 ---@type fun(frame: Frame, fn: fun(self: Frame, level: number))
-local UIDropDownMenu_Initialize
+local UIDropDownMenu_Initialize = _G.UIDropDownMenu_Initialize or UIDropDownMenu_Initialize
 ---@type fun(): table
-local UIDropDownMenu_CreateInfo
+local UIDropDownMenu_CreateInfo = _G.UIDropDownMenu_CreateInfo or UIDropDownMenu_CreateInfo
 ---@type fun(frame: Frame, text: string)
-local UIDropDownMenu_SetText
+local UIDropDownMenu_SetText = _G.UIDropDownMenu_SetText or UIDropDownMenu_SetText
 ---@type fun(info: table, level: number)
-local UIDropDownMenu_AddButton
+local UIDropDownMenu_AddButton = _G.UIDropDownMenu_AddButton or UIDropDownMenu_AddButton
 
 ---@class FontString: Frame
 ---@field SetText fun(self: FontString, text: string)

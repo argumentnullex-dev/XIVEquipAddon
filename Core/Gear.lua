@@ -1,22 +1,22 @@
 -- Gear_Core.lua
 local addonName, XIVEquip = ...
-local Core = {}
-local Log = XIVEquip.Log
-local Const = XIVEquip.Const
-XIVEquip.Gear_Core = Core
+local Core                = {}
+local Log                 = XIVEquip.Log
+local Const               = XIVEquip.Const
+XIVEquip.Gear_Core        = Core
 
 -- =========================
 -- Public constants/lookups (unchanged)
 -- =========================
 
-Core.ARMOR_SLOTS = Const.ARMOR_SLOTS
-Core.JEWELRY     = Const.JEWELRY
-Core.LOWER_ILVL_ARMOR   = Const.LOWER_ILVL_ARMOR
-Core.LOWER_ILVL_JEWELRY = Const.LOWER_ILVL_JEWELRY
-Core.INV_BY_EQUIPLOC = Const.INV_BY_EQUIPLOC
-Core.SLOT_EQUIPLOCS = Const.SLOT_EQUIPLOCS
-Core.ITEMCLASS_ARMOR = Const.ITEMCLASS_ARMOR
-Core.SLOT_LABEL = Const.SLOT_LABEL
+Core.ARMOR_SLOTS          = Const.ARMOR_SLOTS
+Core.JEWELRY              = Const.JEWELRY
+Core.LOWER_ILVL_ARMOR     = Const.LOWER_ILVL_ARMOR
+Core.LOWER_ILVL_JEWELRY   = Const.LOWER_ILVL_JEWELRY
+Core.INV_BY_EQUIPLOC      = Const.INV_BY_EQUIPLOC
+Core.SLOT_EQUIPLOCS       = Const.SLOT_EQUIPLOCS
+Core.ITEMCLASS_ARMOR      = Const.ITEMCLASS_ARMOR
+Core.SLOT_LABEL           = Const.SLOT_LABEL
 
 local function debugf(slotID, fmt, ...)
   if Log and Log.Debugf then
@@ -43,7 +43,7 @@ function Core.ItemInstanceKey(itemLoc)
   local link = C_Item and C_Item.GetItemLink and C_Item.GetItemLink(itemLoc)
   local id = link and tonumber(link:match("|Hitem:(%d+)"))
   local bag, slot = itemLoc and itemLoc.bagID, itemLoc and itemLoc.slotIndex
-  return table.concat({id or 0, bag or -1, slot or -1}, ":")
+  return table.concat({ id or 0, bag or -1, slot or -1 }, ":")
 end
 
 function Core.itemGUID(loc)
@@ -79,10 +79,10 @@ function Core.equippedBasics(slotID, comparer)
   local score = nil
   if comparer and comparer.ScoreItem then
     local ok, v = pcall(comparer.ScoreItem, loc, slotID)
-    if ok and type(v)=="number" then score = v end
+    if ok and type(v) == "number" then score = v end
   end
 
-  return { loc=loc, slot=slotID, link=link, ilvl=ilvl, score=score, equipLoc=equipLoc }
+  return { loc = loc, slot = slotID, link = link, ilvl = ilvl, score = score, equipLoc = equipLoc }
 end
 
 -- Equip a bag item into a specific slot (unchanged logic)
@@ -131,10 +131,19 @@ end
 function Core.playerArmorSubclass()
   local class = select(2, UnitClass("player"))
   local map = {
-    WARRIOR=4, PALADIN=4, DEATHKNIGHT=4,
-    HUNTER=3, SHAMAN=3, EVOKER=3,
-    ROGUE=2, MONK=2, DEMONHUNTER=2, DRUID=2,
-    MAGE=1, PRIEST=1, WARLOCK=1,
+    WARRIOR = 4,
+    PALADIN = 4,
+    DEATHKNIGHT = 4,
+    HUNTER = 3,
+    SHAMAN = 3,
+    EVOKER = 3,
+    ROGUE = 2,
+    MONK = 2,
+    DEMONHUNTER = 2,
+    DRUID = 2,
+    MAGE = 1,
+    PRIEST = 1,
+    WARLOCK = 1,
   }
   return map[class]
 end
@@ -153,17 +162,17 @@ do
   local LOWER_ILVL_ARMOR     = Core.LOWER_ILVL_ARMOR
   local LOWER_ILVL_JEWELRY   = Core.LOWER_ILVL_JEWELRY
 
-  local EPS = 1e-6
+  local EPS                  = 1e-6
 
-    -- Exported: Core.chooseForSlot (slot-agnostic; works for jewelry as-is)
+  -- Exported: Core.chooseForSlot (slot-agnostic; works for jewelry as-is)
   function Core.chooseForSlot(comparer, slotID, expectedArmorSubclass, used)
-    local dbg = debugf
-    local equipped = equippedBasics(slotID, comparer)
-    local equippedIlvl   = (equipped and equipped.ilvl) or 0
-    local equippedScore  = (equipped and equipped.score) or nil
-    local lowerBound     = JEWELRY[slotID] and LOWER_ILVL_JEWELRY or LOWER_ILVL_ARMOR
+    local dbg           = debugf
+    local equipped      = equippedBasics(slotID, comparer)
+    local equippedIlvl  = (equipped and equipped.ilvl) or 0
+    local equippedScore = (equipped and equipped.score) or nil
+    local lowerBound    = JEWELRY[slotID] and LOWER_ILVL_JEWELRY or LOWER_ILVL_ARMOR
 
-    local best = nil
+    local best          = nil
 
     for bag = 0, NUM_BAG_SLOTS do
       local num = C_Container.GetContainerNumSlots(bag) or 0
@@ -175,11 +184,25 @@ do
             if dbg then dbg(slotID, "consider itemID=%s equipLoc=%s", tostring(info.itemID), tostring(equipLoc)) end
 
             local link = info.hyperlink or C_Container.GetContainerItemLink(bag, slot)
-            local ilvl = getItemLevelFromLink(link)
+            -- Prefer the runtime/current item level for bag items when available (handles heirlooms)
+            local itemLoc = nil
+            if type(ItemLocation) == "table" and type(ItemLocation.CreateFromBagAndSlot) == "function" then
+              itemLoc = ItemLocation.CreateFromBagAndSlot(bag, slot)
+            end
+            local ilvl = nil
+            if itemLoc and C_Item and C_Item.GetCurrentItemLevel then
+              local ok, cur = pcall(C_Item.GetCurrentItemLevel, itemLoc)
+              if ok and type(cur) == "number" and cur > 0 then ilvl = cur end
+            end
+            if not ilvl then ilvl = getItemLevelFromLink(link) end
             if dbg then dbg(slotID, "candidate ilvl=%s link=%s", tostring(ilvl or "nil"), tostring(link or "nil")) end
 
-            if ilvl >= (equippedIlvl - lowerBound) then
-              local itemLoc = ItemLocation:CreateFromBagAndSlot(bag, slot)
+            -- Treat ilvl == 1 (heirloom reported as level 1) as "unknown" and don't reject it
+            local passesLowerBound = (type(ilvl) == "number") and ((ilvl == 1) or ilvl >= (equippedIlvl - lowerBound))
+            print(tostring(passesLowerBound))
+            if passesLowerBound then
+              local itemLoc = (type(ItemLocation) == "table" and type(ItemLocation.CreateFromBagAndSlot) == "function") and
+                  ItemLocation.CreateFromBagAndSlot(bag, slot) or nil
               local guid = itemGUID(itemLoc)
               if not (used and guid and used[guid]) then
                 local score = nil
@@ -214,8 +237,10 @@ do
                 if dbg then dbg(slotID, "skip: already used guid=%s link=%s", tostring(guid), tostring(link or "nil")) end
               end
             else
-              if dbg then dbg(slotID, "skip: below lower bound (cand=%s, equipped=%s, bound=%s)",
-                tostring(ilvl or "nil"), tostring(equippedIlvl or "nil"), tostring(lowerBound)) end
+              if dbg then
+                dbg(slotID, "skip: below lower bound (cand=%s, equipped=%s, bound=%s)",
+                  tostring(ilvl or "nil"), tostring(equippedIlvl or "nil"), tostring(lowerBound))
+              end
             end
           end
         end
@@ -226,14 +251,18 @@ do
     if best then
       if equippedScore ~= nil then
         if best.score <= (equippedScore + EPS) then
-          if dbg then dbg(slotID, "reject: score-not-better (best=%s, equipped=%s)",
-            tostring(best.score), tostring(equippedScore)) end
+          if dbg then
+            dbg(slotID, "reject: score-not-better (best=%s, equipped=%s)",
+              tostring(best.score), tostring(equippedScore))
+          end
           return nil, equipped
         end
       else
         if best.ilvl <= equippedIlvl then
-          if dbg then dbg(slotID, "reject: ilvl-not-better (best=%s, equipped=%s)",
-            tostring(best.ilvl), tostring(equippedIlvl)) end
+          if dbg then
+            dbg(slotID, "reject: ilvl-not-better (best=%s, equipped=%s)",
+              tostring(best.ilvl), tostring(equippedIlvl))
+          end
           return nil, equipped
         end
       end
@@ -253,16 +282,16 @@ function Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
   table.insert(plan, pick)
 
   -- Build the UI change row (exactly the same fields you’re using)
-  local oldLink   = (equipped and equipped.link) or "|cff888888(None)|r"
-  local newLink   = pick.link or oldLink
-  local newScore  = (pick and pick.score) or 0
-  local oldScore  = (equipped and equipped.score) or 0
-  local newIlvl   = (pick and pick.ilvl) or 0
-  local oldIlvl   = (equipped and equipped.ilvl) or 0
+  local oldLink  = (equipped and equipped.link) or "|cff888888(None)|r"
+  local newLink  = pick.link or oldLink
+  local newScore = (pick and pick.score) or 0
+  local oldScore = (equipped and equipped.score) or 0
+  local newIlvl  = (pick and pick.ilvl) or 0
+  local oldIlvl  = (equipped and equipped.ilvl) or 0
 
-  local row = {
+  local row      = {
     slot        = slotID,
-    slotName    = Core.SLOT_LABEL[slotID] or ("Slot "..slotID),
+    slotName    = Core.SLOT_LABEL[slotID] or ("Slot " .. slotID),
     oldLink     = oldLink,
     newLink     = newLink,
     deltaScore  = newScore - oldScore,
@@ -305,4 +334,27 @@ function Core.tryChooseAppend(plan, changes, slotID, comparer, expectedArmorSubc
   Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
   if pick.guid and used then used[pick.guid] = true end
   return pick, equipped, true
+end
+
+-- Small helpers
+function Core.linkFromLocation(location)
+  -- Try the C_Item API with the provided location (works for ItemLocation userdata or tables)
+  if C_Item and C_Item.GetItemLink then
+    local ok, link = pcall(C_Item.GetItemLink, location)
+    if ok and link then return link end
+  end
+  -- If a numeric inventory slot was passed, try the legacy API
+  if type(location) == "number" and GetInventoryItemLink then
+    local ok, link = pcall(GetInventoryItemLink, "player", location)
+    if ok and link then return link end
+  end
+  -- If we have an ItemLocation object, attempt to get an equipment slot and use inventory API
+  if type(location) == "table" and GetInventoryItemLink and type(location.GetEquipmentSlot) == "function" then
+    local ok, slot = pcall(location.GetEquipmentSlot, location)
+    if ok and type(slot) == "number" then
+      local ok2, link = pcall(GetInventoryItemLink, "player", slot)
+      if ok2 and link then return link end
+    end
+  end
+  return nil
 end

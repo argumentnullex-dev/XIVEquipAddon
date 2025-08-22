@@ -1,44 +1,55 @@
 -- UI.lua
-local addonName, XIVEquip = ...
+local addonName, XIVEquip      = ...
 
 -- Declare the WoW globals used in this file for the language server.
 -- These annotations don't evaluate anything at runtime; they only help the LSP.
 ---@type GameTooltipFrame
-local GameTooltip
 ---@type PaperDollFrameClass
-local PaperDollFrame
 ---@type CharacterFrameClass
-local CharacterFrame
 ---@type Frame
-local UIParent
 ---@type Frame
-local CharacterFramePortrait
 ---@type table
-local C_Item
 ---@type table
-local C_Timer
 ---@type fun(...): boolean
-local InCombatLockdown
 ---@type fun(...)
-local GetItemStats
 ---@type fun(...)
-local GetDetailedItemLevelInfo
+---@type GameTooltipFrame
+local GameTooltip              = _G.GameTooltip or GameTooltip
+---@type PaperDollFrameClass
+local PaperDollFrame           = _G.PaperDollFrame or PaperDollFrame or
+    _G.CharacterFrame and _G.CharacterFrame.PaperDollFrame
+---@type CharacterFrameClass
+local CharacterFrame           = _G.CharacterFrame or CharacterFrame
+---@type Frame
+local UIParent                 = _G.UIParent or UIParent
+---@type Frame
+local CharacterFramePortrait   = _G.CharacterFramePortrait or CharacterFramePortrait
+---@type table
+local C_Item                   = _G.C_Item or C_Item
+---@type table
+local C_Timer                  = _G.C_Timer or C_Timer
+---@type fun(...): boolean
+local InCombatLockdown         = _G.InCombatLockdown or InCombatLockdown
+---@type fun(...)
+local GetItemStats             = _G.GetItemStats or GetItemStats
+---@type fun(...)
+local GetDetailedItemLevelInfo = _G.GetDetailedItemLevelInfo or GetDetailedItemLevelInfo
 
-XIVEquip                  = XIVEquip or {}
-local L                   = XIVEquip.L or {}
+XIVEquip                       = XIVEquip or {}
+local L                        = XIVEquip.L or {}
 
 -- Fallback strings
-L.ButtonTooltip           = L.ButtonTooltip or "Equip Recommended Gear"
+L.ButtonTooltip                = L.ButtonTooltip or "Equip Recommended Gear"
 
 -- Button textures
-local TEX_ENABLED         = "Interface\\AddOns\\XIVEquip\\Assets\\icon_blue_128.tga"
-local TEX_DISABLED        = "Interface\\AddOns\\XIVEquip\\Assets\\icon_white_128.tga"
+local TEX_ENABLED              = "Interface\\AddOns\\XIVEquip\\Assets\\icon_blue_128.tga"
+local TEX_DISABLED             = "Interface\\AddOns\\XIVEquip\\Assets\\icon_white_128.tga"
 
 ---@type Frame
 local btn
 
 -- Map Blizzard stat tokens -> Pawn keys and pretty text
-local STAT_TO_PAWN        = {
+local STAT_TO_PAWN             = {
   ITEM_MOD_CRIT_RATING_SHORT      = { key = "CritRating", label = "Crit" },
   ITEM_MOD_HASTE_RATING_SHORT     = { key = "HasteRating", label = "Haste" },
   ITEM_MOD_MASTERY_RATING_SHORT   = { key = "MasteryRating", label = "Mastery" },
@@ -48,7 +59,7 @@ local STAT_TO_PAWN        = {
   ITEM_MOD_SPEED_RATING_SHORT     = { key = "MovementSpeed", label = "Speed" },
 }
 
-local GetItemStatsCompat  =
+local GetItemStatsCompat       =
     (type(GetItemStats) == "function" and GetItemStats) or
     (C_Item and C_Item.GetItemStats) or
     function() return nil end
@@ -105,8 +116,15 @@ end
 local function ensureDeltas(c)
   -- score delta (Pawn helpers from Pawn.lua)
   if (not c.deltaScore) or c.deltaScore == 0 then
-    local newV = XIVEquip.PawnScoreLinkAuto and select(1, XIVEquip.PawnScoreLinkAuto(c.newLink))
-    local oldV = XIVEquip.PawnScoreLinkAuto and select(1, XIVEquip.PawnScoreLinkAuto(c.oldLink))
+    local newV
+    local oldV
+    if XIVEquip.Pawn and type(XIVEquip.Pawn.ScoreItemLink) == "function" then
+      newV = select(1, XIVEquip.Pawn.ScoreItemLink(c.newLink))
+      oldV = select(1, XIVEquip.Pawn.ScoreItemLink(c.oldLink))
+    else
+      newV = XIVEquip.PawnScoreLinkAuto and select(1, XIVEquip.PawnScoreLinkAuto(c.newLink))
+      oldV = XIVEquip.PawnScoreLinkAuto and select(1, XIVEquip.PawnScoreLinkAuto(c.oldLink))
+    end
     if oldV == nil then oldV = 0 end
     if type(newV) == "number" and type(oldV) == "number" then
       c.deltaScore = newV - oldV
@@ -233,8 +251,9 @@ local function createButton()
     withLoginSilenced(function()
       local cmp = XIVEquip.Comparers and XIVEquip.Comparers:StartPass()
 
-      if cmp and type(cmp.PawnGetActiveTooltipHeader) == "function" then
-        tooltipHeader = cmp.PawnGetActiveTooltipHeader()
+      if cmp and ((XIVEquip.Pawn and type(XIVEquip.Pawn.GetTooltipHeader) == "function") or type(cmp.PawnGetActiveTooltipHeader) == "function") then
+        tooltipHeader = (XIVEquip.Pawn and XIVEquip.Pawn.GetTooltipHeader and XIVEquip.Pawn.GetTooltipHeader()) or
+            (cmp.PawnGetActiveTooltipHeader and cmp.PawnGetActiveTooltipHeader())
       end
 
       if cmp and XIVEquip.Gear and XIVEquip.Gear.PlanBest then

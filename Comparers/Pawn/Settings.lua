@@ -11,10 +11,28 @@ local function ensure()
   local st = _G.XIVEquip_Settings
 
   -- Debug group
-  st.Debug = st.Debug or {
-    Enabled = false, -- debug messages OFF by default
-    Slot    = nil,   -- nil = all; string/number to filter
-  }
+  -- Debug group: normalize legacy shapes (boolean) to the new table shape
+  if type(st.Debug) == "boolean" then
+    -- older code stored a boolean directly; convert to table
+    st.Debug = {
+      Enabled = st.Debug,
+      Slot = nil,
+    }
+  else
+    st.Debug = st.Debug or { Enabled = false, Slot = nil }
+    -- Ensure fields exist and have safe types
+    if type(st.Debug) == "table" then
+      st.Debug.Enabled = not not st.Debug.Enabled
+      -- leave Slot as-is (may be nil/string/number)
+    else
+      -- fallback: replace with sensible defaults
+      st.Debug = { Enabled = false, Slot = nil }
+    end
+  end
+
+  -- Mirror legacy globals for logger consumption
+  rawset(_G, "XIVEquip_Debug", not not st.Debug.Enabled)
+  rawset(_G, "XIVEquip_DebugSlot", st.Debug.Slot)
 
   -- Messages group
   st.Messages = st.Messages or {
@@ -40,11 +58,20 @@ end
 function S:Get() return ensure() end
 
 -- Debug
-function S:SetDebugEnabled(val) ensure().Debug.Enabled = not not val end
+function S:SetDebugEnabled(val)
+  local enabled = not not val
+  ensure().Debug.Enabled = enabled
+  -- mirror to the global Debug flag used by Debugf() so Debugf output can be enabled via commands
+  _G.XIVEquip_Debug = enabled
+end
 
 function S:GetDebugEnabled() return ensure().Debug.Enabled end
 
-function S:SetDebugSlot(slot) ensure().Debug.Slot = slot end
+function S:SetDebugSlot(slot)
+  ensure().Debug.Slot = slot
+  -- mirror to global used by Logger.Debugf
+  rawset(_G, "XIVEquip_DebugSlot", slot)
+end
 
 function S:GetDebugSlot() return ensure().Debug.Slot end
 
