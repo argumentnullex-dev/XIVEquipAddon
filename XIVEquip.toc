@@ -9,20 +9,22 @@
 ## OptionalDeps: Pawn
 
 # Global
+Global/Settings.lua
 Global/Constants.lua
 Global/Localization.lua
 Global/Logger.lua
 
 # Core Modules for Registration and Setup
-Core/Settings.lua
-Core/Hooks.lua
-Core/Gear.lua
-Core/Comparers.lua
-Core/Command.lua
+Core/GearHooks.lua
+Core/GearCore.lua
+Core/ComparerBootstrapper.lua
+Core/CommandRouter.lua
 
-# Comparer Implementations
+# Comparers - Item Level
 Comparers/ilvl/Interface.lua
 Comparers/ilvl/Export.lua
+
+# Comparers - Pawn
 Comparers/Pawn/Interface.lua
 Comparers/Pawn/Export.lua
 Comparers/Pawn/Settings.lua
@@ -32,8 +34,8 @@ Comparers/Pawn/Command.lua
 Gear/Weapons.lua
 Gear/Jewelry.lua
 Gear/Armor.lua
-#Gear/Command.lua
 Gear/Interface.lua
+#Gear/Command.lua
 
 # Automation Features
 Automation/SpecSwitch.lua
