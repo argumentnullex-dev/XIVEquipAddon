@@ -1,32 +1,57 @@
--- UI.lua (drop-in)
+-- UI.lua
 local addonName, XIVEquip = ...
-XIVEquip = XIVEquip or {}
-local L = XIVEquip.L or {}
+
+-- Declare the WoW globals used in this file for the language server.
+-- These annotations don't evaluate anything at runtime; they only help the LSP.
+---@type GameTooltipFrame
+local GameTooltip
+---@type PaperDollFrameClass
+local PaperDollFrame
+---@type CharacterFrameClass
+local CharacterFrame
+---@type Frame
+local UIParent
+---@type Frame
+local CharacterFramePortrait
+---@type table
+local C_Item
+---@type table
+local C_Timer
+---@type fun(...): boolean
+local InCombatLockdown
+---@type fun(...)
+local GetItemStats
+---@type fun(...)
+local GetDetailedItemLevelInfo
+
+XIVEquip                  = XIVEquip or {}
+local L                   = XIVEquip.L or {}
 
 -- Fallback strings
-L.ButtonTooltip = L.ButtonTooltip or "Equip Recommended Gear"
+L.ButtonTooltip           = L.ButtonTooltip or "Equip Recommended Gear"
 
 -- Button textures
-local TEX_ENABLED  = "Interface\\AddOns\\XIVEquip\\assets\\icon_blue_128.tga"
-local TEX_DISABLED = "Interface\\AddOns\\XIVEquip\\assets\\icon_white_128.tga"
+local TEX_ENABLED         = "Interface\\AddOns\\XIVEquip\\Assets\\icon_blue_128.tga"
+local TEX_DISABLED        = "Interface\\AddOns\\XIVEquip\\Assets\\icon_white_128.tga"
 
+---@type Frame
 local btn
 
 -- Map Blizzard stat tokens -> Pawn keys and pretty text
-local STAT_TO_PAWN = {
-  ITEM_MOD_CRIT_RATING_SHORT        = { key="CritRating",      label="Crit"     },
-  ITEM_MOD_HASTE_RATING_SHORT       = { key="HasteRating",     label="Haste"    },
-  ITEM_MOD_MASTERY_RATING_SHORT     = { key="MasteryRating",   label="Mastery"  },
-  ITEM_MOD_VERSATILITY              = { key="Versatility",     label="Vers"     },
-  ITEM_MOD_LIFESTEAL_SHORT          = { key="Leech",           label="Leech"    },
-  ITEM_MOD_AVOIDANCE_RATING_SHORT   = { key="Avoidance",       label="Avoid"    },
-  ITEM_MOD_SPEED_RATING_SHORT       = { key="MovementSpeed",   label="Speed"    },
+local STAT_TO_PAWN        = {
+  ITEM_MOD_CRIT_RATING_SHORT      = { key = "CritRating", label = "Crit" },
+  ITEM_MOD_HASTE_RATING_SHORT     = { key = "HasteRating", label = "Haste" },
+  ITEM_MOD_MASTERY_RATING_SHORT   = { key = "MasteryRating", label = "Mastery" },
+  ITEM_MOD_VERSATILITY            = { key = "Versatility", label = "Vers" },
+  ITEM_MOD_LIFESTEAL_SHORT        = { key = "Leech", label = "Leech" },
+  ITEM_MOD_AVOIDANCE_RATING_SHORT = { key = "Avoidance", label = "Avoid" },
+  ITEM_MOD_SPEED_RATING_SHORT     = { key = "MovementSpeed", label = "Speed" },
 }
 
-local GetItemStatsCompat =
-  (type(GetItemStats) == "function" and GetItemStats) or
-  (C_Item and C_Item.GetItemStats) or
-  function() return nil end
+local GetItemStatsCompat  =
+    (type(GetItemStats) == "function" and GetItemStats) or
+    (C_Item and C_Item.GetItemStats) or
+    function() return nil end
 
 local function computeStatDiff(oldLink, newLink)
   local get = GetItemStatsCompat
@@ -36,8 +61,8 @@ local function computeStatDiff(oldLink, newLink)
   local b = get(newLink) or {}
   -- union of keys
   local seen = {}
-  for k in pairs(a) do seen[k]=true end
-  for k in pairs(b) do seen[k]=true end
+  for k in pairs(a) do seen[k] = true end
+  for k in pairs(b) do seen[k] = true end
 
   for k in pairs(seen) do
     local delta = (b[k] or 0) - (a[k] or 0)
@@ -137,8 +162,11 @@ local function saveButtonPosition()
   local point, rel, relPoint, x, y = btn:GetPoint(1)
   _G.XIVEquip_Settings = _G.XIVEquip_Settings or {}
   _G.XIVEquip_Settings.ButtonPos = {
-    point = point, rel = rel and rel:GetName() or "PaperDollFrame",
-    relPoint = relPoint, x = x, y = y
+    point = point,
+    rel = rel and rel:GetName() or "PaperDollFrame",
+    relPoint = relPoint,
+    x = x,
+    y = y
   }
 end
 
@@ -154,7 +182,9 @@ local function createButton()
   btn:SetMovable(true)
   btn:RegisterForDrag("LeftButton")
   btn:SetScript("OnDragStart", function(self) if not InCombatLockdown() then self:StartMoving() end end)
-  btn:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); saveButtonPosition(); anchorButton() end)
+  btn:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing(); saveButtonPosition(); anchorButton()
+  end)
 
   btn:SetBackdrop({
     bgFile   = "Interface\\Buttons\\WHITE8x8",
@@ -198,15 +228,23 @@ local function createButton()
       return
     end
 
-    local changes, pending, weaponPlan
+    local changes, pending, weaponPlan, tooltipHeader
 
     withLoginSilenced(function()
       local cmp = XIVEquip.Comparers and XIVEquip.Comparers:StartPass()
 
+      if cmp and type(cmp.PawnGetActiveTooltipHeader) == "function" then
+        tooltipHeader = cmp.PawnGetActiveTooltipHeader()
+      end
+
       if cmp and XIVEquip.Gear and XIVEquip.Gear.PlanBest then
-        changes, pending = XIVEquip.Gear:PlanBest(cmp)  -- requires Gear:PlanBest to honor opts.exclude
+        changes, pending = XIVEquip.Gear:PlanBest(cmp) -- requires Gear:PlanBest to honor opts.exclude
       else
         changes, pending = {}, false
+      end
+
+      if tooltipHeader and tooltipHeader ~= "" then
+        GameTooltip:AddLine("|cffffd200" .. tooltipHeader .. "|r")
       end
 
       if XIVEquip.Weapons and XIVEquip.Weapons.FindBestLoadout and XIVEquip.Weapons.PlanBest then
@@ -231,9 +269,9 @@ local function createButton()
         -- compute deltas if missing/zero
         ensureDeltas(c)
 
-        local dIlvl = c.deltaIlvl or 0
-        local raw   = computeStatDiff(c.oldLink, c.newLink) or {}
-        local values = c.scaleValues
+        local dIlvl   = c.deltaIlvl or 0
+        local raw     = computeStatDiff(c.oldLink, c.newLink) or {}
+        local values  = c.scaleValues
         local _, wsum = weightDeltas(raw, values)
 
         -- main line: new link, score, ilvl
@@ -245,12 +283,14 @@ local function createButton()
         local rows = {}
         for blizzKey, delta in pairs(raw) do
           local map = STAT_TO_PAWN[blizzKey]
-          if map and delta ~= 0 then rows[#rows+1] = { label = map.label, d = delta } end
+          if map and delta ~= 0 then rows[#rows + 1] = { label = map.label, d = delta } end
         end
-        table.sort(rows, function(a,b) return math.abs(a.d) > math.abs(b.d) end)
+        table.sort(rows, function(a, b) return math.abs(a.d) > math.abs(b.d) end)
 
         for i, row in ipairs(rows) do
-          if i > 8 then GameTooltip:AddLine("     |cffaaaaaa(…more)|r"); break end
+          if i > 8 then
+            GameTooltip:AddLine("     |cffaaaaaa(…more)|r"); break
+          end
           local color = row.d > 0 and "|cff7fff7f" or "|cffff3a3a"
           GameTooltip:AddLine(string.format("     %s%+d %s|r", color, row.d, row.label))
         end

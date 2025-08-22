@@ -52,6 +52,10 @@ M:RegisterComparer("Pawn", {
     return 0
   end,
 
+  GetActiveTooltipHeader = function()
+    return XIVEquip.PawnGetActiveTooltipHeader()
+  end,
+
   -- Optional: richer debug info (value, source, scale used)
   DebugScore = function(location)
     if type(XIVEquip.PawnScoreLocationAuto) == "function" then

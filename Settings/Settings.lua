@@ -1,7 +1,36 @@
--- UI.lua
+-- Settings/Settings.lua
 local addon, XIVEquip = ...
 XIVEquip = XIVEquip or {}
 local L = (XIVEquip and XIVEquip.L) or {}
+
+-- LSP helper types for this file
+---@class SettingsPanel: Frame
+---@field name string
+
+-- LSP annotations for UI widgets and helpers
+---@type fun(frameType: string, name: string?, parent: table?, template: string?): Frame
+local CreateFrame
+---@type fun(frame: Frame, w: number)
+local UIDropDownMenu_SetWidth
+---@type fun(frame: Frame, fn: fun(self: Frame, level: number))
+local UIDropDownMenu_Initialize
+---@type fun(): table
+local UIDropDownMenu_CreateInfo
+---@type fun(frame: Frame, text: string)
+local UIDropDownMenu_SetText
+---@type fun(info: table, level: number)
+local UIDropDownMenu_AddButton
+
+---@class FontString: Frame
+---@field SetText fun(self: FontString, text: string)
+---@field SetPoint fun(self: FontString, point: string, ...: any)
+---@field SetWidth fun(self: FontString, w: number)
+---@field SetJustifyH fun(self: FontString, h: string)
+
+---@class CheckButton: Frame
+---@field SetChecked fun(self: CheckButton, v: boolean)
+---@field GetChecked fun(self: CheckButton): boolean
+---@field SetScript fun(self: CheckButton, script: string, fn: fun(self: CheckButton))
 
 -- Return map of comparer internal names -> display labels
 local function comparerNames()
@@ -17,6 +46,7 @@ end
 local function BuildSettingsPanel()
   local s = XIVEquip_Settings
   local panel = CreateFrame("Frame")
+  ---@cast panel SettingsPanel
   panel.name = L.Settings_Title or "XIVEquip"
 
   -- Title
@@ -63,6 +93,7 @@ local function BuildSettingsPanel()
 
   -- Messages: login
   local cbLogin = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
+  ---@cast cbLogin CheckButton
   cbLogin:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 18, -16)
   cbLogin.Text:SetText(L.Settings_LoginMsgs or "Show login message")
   cbLogin:SetChecked(s.Messages.Login)
@@ -70,6 +101,7 @@ local function BuildSettingsPanel()
 
   -- Messages: equip
   local cbEquip = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
+  ---@cast cbEquip CheckButton
   cbEquip:SetPoint("TOPLEFT", cbLogin, "BOTTOMLEFT", 0, -8)
   cbEquip.Text:SetText(L.Settings_EquipMsgs or "Show equip messages")
   cbEquip:SetChecked(s.Messages.Equip)
@@ -77,6 +109,7 @@ local function BuildSettingsPanel()
 
   -- Debug checkbox
   local cbDebug = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
+  ---@cast cbDebug CheckButton
   cbDebug:SetPoint("TOPLEFT", cbEquip, "BOTTOMLEFT", 0, -8)
   cbDebug.Text:SetText(L.Settings_Debug or "Enable debug logging")
   cbDebug:SetChecked(s.Debug and true or false)
@@ -84,6 +117,7 @@ local function BuildSettingsPanel()
 
   -- Auto-equip on spec change (NEW)
   local cbAuto = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
+  ---@cast cbAuto CheckButton
   cbAuto:SetPoint("TOPLEFT", cbDebug, "BOTTOMLEFT", 0, -8)
   cbAuto.Text:SetText(L.Settings_AutoSpecEquip or "Auto-equip & save set on spec change")
   cbAuto:SetChecked(s.AutoSpecEquip ~= false)
@@ -106,17 +140,17 @@ local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
 f:SetScript("OnEvent", function(_, e, name)
   if e == "ADDON_LOADED" and name == addon then
-    XIVEquip_Settings = XIVEquip_Settings or {}
-    local s = XIVEquip_Settings
+    XIVEquip_Settings  = XIVEquip_Settings or {}
+    local s            = XIVEquip_Settings
 
     -- Defaults
     s.SelectedComparer = s.SelectedComparer or "default"
-    s.Messages = s.Messages or { Login = true, Equip = true }
-    s.Weapons  = s.Weapons  or {}
-    s.Weapons.Mode = s.Weapons.Mode or "AUTO"
-    s.Weapons.Bias = s.Weapons.Bias or "AUTO"
-    s.Debug = (s.Debug == nil) and false or s.Debug
-    s.AutoSpecEquip = (s.AutoSpecEquip ~= false)  -- default ON unless explicitly false
+    s.Messages         = s.Messages or { Login = true, Equip = true }
+    s.Weapons          = s.Weapons or {}
+    s.Weapons.Mode     = s.Weapons.Mode or "AUTO"
+    s.Weapons.Bias     = s.Weapons.Bias or "AUTO"
+    s.Debug            = (s.Debug == nil) and false or s.Debug
+    s.AutoSpecEquip    = (s.AutoSpecEquip ~= false) -- default ON unless explicitly false
 
     if Settings and Settings.RegisterCanvasLayoutCategory then
       local panel = BuildSettingsPanel()

@@ -2,26 +2,47 @@
 ## Title: XIVEquip
 ## Notes: FFXIV-style 'Equip Recommended Gear' button using Pawn when available.
 ## Author: CodeNinja
-## Version: 0.1.0
+## Version: 110002.1.0
 ## SavedVariables: XIVEquip_Settings
 
 # Don’t hard-block the addon when Pawn isn’t installed:
 ## OptionalDeps: Pawn
 
-Constants.lua
-Localization.lua
-Logger.lua
-Hooks.lua
-Gear_Core.lua
-Pawn.lua
-Comparers.lua
-Pawn_Comparer.lua
-Weapons.lua
-Jewelry.lua
-Armor.lua
-Gear.lua
-UI.lua
-Settings_Pawn.lua
-Settings.lua
-AutoSpecSwitcher.lua
+# Global
+Global/Constants.lua
+Global/Localization.lua
+Global/Logger.lua
+
+# Core Modules for Registration and Setup
+Core/Settings.lua
+Core/Hooks.lua
+Core/Gear.lua
+Core/Comparers.lua
+Core/Command.lua
+
+# Comparer Implementations
+Comparers/ilvl/Interface.lua
+Comparers/ilvl/Export.lua
+Comparers/Pawn/Interface.lua
+Comparers/Pawn/Export.lua
+Comparers/Pawn/Settings.lua
+
+# Gear Evaluation Modules
+Gear/Weapons.lua
+Gear/Jewelry.lua
+Gear/Armor.lua
+Gear/Command.lua
+Gear/Interface.lua
+
+# Automation Features
+Automation/SpecSwitch.lua
+Automation/Command.lua
+
+# UI Modules
+UI/UI.lua
+
+# Settings Modules
+Settings/Settings.lua
+
+# Top Level Module
 XIVEquip.lua
