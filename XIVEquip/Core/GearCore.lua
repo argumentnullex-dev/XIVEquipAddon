@@ -18,6 +18,8 @@ Core.SLOT_EQUIPLOCS       = Const.SLOT_EQUIPLOCS
 Core.ITEMCLASS_ARMOR      = Const.ITEMCLASS_ARMOR
 Core.SLOT_LABEL           = Const.SLOT_LABEL
 
+local ARMOR_SLOTS         = Core.ARMOR_SLOTS
+
 local function debugf(slotID, fmt, ...)
   if Log and Log.Debugf then
     return Log.Debugf(slotID, fmt, ...)
@@ -148,21 +150,59 @@ function Core.playerArmorSubclass()
   return map[class]
 end
 
+-- Checks if the given item is valid armor type for the player’s class
+-- jewelry and cloaks are always valid
+function Core.equipIsValidArmorType(itemID, slotID, expectedArmorSubclass)
+  if not itemID then return false end
+
+  -- If this isn't one of the armor slots we restrict, always allow.
+  -- quick lookup: is this slot one of the restricted armor slots?
+  local isArmorSlot = false
+  for _, sid in ipairs(Const.ARMOR_SLOTS) do
+    if sid == slotID then
+      isArmorSlot = true
+      break
+    end
+  end
+  if not isArmorSlot then
+    return true -- never restrict non-armor slots
+  end
+
+  local _, _, _, _, _, classID, subclassID = GetItemInfoInstant(itemID)
+  if not classID or not subclassID then
+    -- Be conservative on missing data for armor slots
+    return false
+  end
+
+  if classID ~= 4 then -- Armor = 4 (retail Enum.ItemClass.Armor)
+    return true        -- not an armor item, don’t restrict
+  end
+
+  expectedArmorSubclass = expectedArmorSubclass or (Core.playerArmorSubclass and Core.playerArmorSubclass())
+  if not expectedArmorSubclass then
+    -- If we can't determine the player's proficiency, fail safe.
+    return false
+  end
+
+  return subclassID == expectedArmorSubclass
+end
+
 -- =========================
 -- Selection primitive
 -- =========================
 
 do
   -- Local aliases
-  local equippedBasics       = Core.equippedBasics
-  local equipLocMatchesSlot  = Core.equipLocMatchesSlot
-  local getItemLevelFromLink = Core.getItemLevelFromLink
-  local itemGUID             = Core.itemGUID
-  local JEWELRY              = Core.JEWELRY
-  local LOWER_ILVL_ARMOR     = Core.LOWER_ILVL_ARMOR
-  local LOWER_ILVL_JEWELRY   = Core.LOWER_ILVL_JEWELRY
+  local equippedBasics        = Core.equippedBasics
+  local equipLocMatchesSlot   = Core.equipLocMatchesSlot
+  local equipIsValidArmorType = Core.equipIsValidArmorType
+  local getItemLevelFromLink  = Core.getItemLevelFromLink
+  local itemGUID              = Core.itemGUID
+  local JEWELRY               = Core.JEWELRY
+  local LOWER_ILVL_ARMOR      = Core.LOWER_ILVL_ARMOR
+  local LOWER_ILVL_JEWELRY    = Core.LOWER_ILVL_JEWELRY
 
-  local EPS                  = 1e-6
+  local EPS                   = 1e-6
 
   -- Exported: Core.chooseForSlot (slot-agnostic; works for jewelry as-is)
   function Core.chooseForSlot(comparer, slotID, expectedArmorSubclass, used)
@@ -180,7 +220,10 @@ do
         local info = C_Container.GetContainerItemInfo(bag, slot)
         if info and info.itemID then
           local _, _, _, equipLoc, _, classID, subclassID = GetItemInfoInstant(info.itemID)
-          if equipLoc and equipLocMatchesSlot(equipLoc, slotID) then
+          if equipLoc
+              and equipLocMatchesSlot(equipLoc, slotID)
+              and equipIsValidArmorType(info.itemID, slotID, expectedArmorSubclass)
+          then
             if dbg then dbg(slotID, "consider itemID=%s equipLoc=%s", tostring(info.itemID), tostring(equipLoc)) end
 
             local link = info.hyperlink or C_Container.GetContainerItemLink(bag, slot)

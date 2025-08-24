@@ -101,9 +101,6 @@ No, but it’s recommended. Without Pawn, XIVEquip uses a transparent stat/ilvl 
 **Why did it pick a lower item level?**
 Because your **weights** said it’s better (e.g., a haste/vers piece may beat crit/mastery at lower ilvl for your spec). Turn on debug to see the exact score breakdown.
 
-**Why two different rings/trinkets?**
-Intended. The planner keeps them unique so you don’t equip the same item twice.
-
 **It saved the set under the wrong spec name.**
 We defer the save and re‑read the active spec after swap. If you still see odd timing on your client, increase the delay in `C:_saveSpecSetSoon(0.7)` to `1.0` in `Gear.lua`.
 

@@ -1,8 +1,8 @@
 ## Interface: 110002
 ## Title: XIVEquip
 ## Notes: FFXIV-style 'Equip Recommended Gear' button using Pawn when available.
-## Author: CodeNinja
-## Version: 110002.1.0
+## Author: argument.null.ex@gmail.com (aka Code Ninja)
+## Version: 1.0.2
 ## SavedVariables: XIVEquip_Settings
 
 # Don’t hard-block the addon when Pawn isn’t installed:
