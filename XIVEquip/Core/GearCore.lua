@@ -58,12 +58,38 @@ function Core.itemGUID(loc)
   return nil
 end
 
+function Core.getItemLevel(link, itemLoc)
+  -- 1) Prefer ItemLocation if present (most accurate for current ilvl)
+  if itemLoc and C_Item and C_Item.DoesItemExist and C_Item.DoesItemExist(itemLoc) then
+    local ok, cur = pcall(C_Item.GetCurrentItemLevel, itemLoc)
+    if ok and type(cur) == "number" and cur > 0 then
+      return cur
+    end
+  end
+
+  -- 2) Try cached API by link
+  if link then
+    local il = select(4, GetItemInfo(link)) -- item level here is 4th
+    if type(il) == "number" and il > 0 then
+      return il
+    end
+
+    -- 3) Fallback: detailed API (works even when not fully cached yet)
+    local ok, det = pcall(GetDetailedItemLevelInfo, link)
+    if ok and type(det) == "number" and det > 0 then
+      return det
+    end
+  end
+
+  return 0
+end
+
 function Core.getItemLevelFromLink(link)
-  if not link then return 0 end
-  local il = select(4, GetItemInfo(link))
-  if il and il > 0 then return il end
-  local _, _, _, iLvl = GetItemInfoInstant(link)
-  return iLvl or 0
+  return Core.getItemLevel(link, nil)
+end
+
+function Core.getItemLevelFromLocation(loc)
+  return Core.getItemLevel(nil, loc)
 end
 
 -- Read currently equipped for a slot (unchanged logic)
@@ -74,9 +100,7 @@ function Core.equippedBasics(slotID, comparer)
   local link = GetInventoryItemLink("player", slotID)
   if not link and C_Item.GetItemLink then link = C_Item.GetItemLink(loc) end
 
-  local ilvl = 0
-  if C_Item.GetCurrentItemLevel then ilvl = C_Item.GetCurrentItemLevel(loc) or 0 end
-  if ilvl == 0 then ilvl = Core.getItemLevelFromLink(link) end
+  local ilvl = Core.getItemLevelFromLink(link)
 
   local equipLoc = link and select(9, GetItemInfo(link)) or nil
 
@@ -225,12 +249,11 @@ do
             if type(ItemLocation) == "table" and type(ItemLocation.CreateFromBagAndSlot) == "function" then
               itemLoc = ItemLocation:CreateFromBagAndSlot(bag, slot)
             end
-            local ilvl = nil
-            if itemLoc and C_Item and C_Item.GetCurrentItemLevel then
-              local ok, cur = pcall(C_Item.GetCurrentItemLevel, itemLoc)
-              if ok and type(cur) == "number" and cur > 0 then ilvl = cur end
-            end
-            if not ilvl then ilvl = getItemLevelFromLink(link) end
+            local ilvl = Core.getItemLevelFromLink(link)
+            -- if itemLoc and C_Item and C_Item.GetCurrentItemLevel then
+            --   local ok, cur = pcall(C_Item.GetCurrentItemLevel, itemLoc)
+            --   if ok and type(cur) == "number" and cur > 0 then ilvl = cur end
+            -- end
             if dbg then dbg(slotID, "candidate ilvl=%s link=%s", tostring(ilvl or "nil"), tostring(link or "nil")) end
 
             -- Treat ilvl == 1 (heirloom reported as level 1) as "unknown" and don't reject it
@@ -322,10 +345,10 @@ function Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
   -- Build the UI change row (exactly the same fields you’re using)
   local oldLink  = (equipped and equipped.link) or "|cff888888(None)|r"
   local newLink  = pick.link or oldLink
-  local newScore = (pick and pick.score) or 0
-  local oldScore = (equipped and equipped.score) or 0
-  local newIlvl  = (pick and pick.ilvl) or 0
-  local oldIlvl  = (equipped and equipped.ilvl) or 0
+  local newScore = tonumber((pick and pick.score)) or 0
+  local oldScore = tonumber((equipped and equipped.score)) or 0
+  local newIlvl  = tonumber((pick and pick.ilvl) or 0) or 0
+  local oldIlvl  = tonumber((equipped and equipped.ilvl) or 0) or 0
 
   local row      = {
     slot        = slotID,
