@@ -1,9 +1,9 @@
 -- Jewelry.lua
 local addonName, XIVEquip = ...
-local Core = XIVEquip.Gear_Core
+local Core                = XIVEquip.Gear_Core
 
-local J = {}
-XIVEquip.Jewelry = J
+local J                   = {}
+XIVEquip.Jewelry          = J
 
 local playerArmorSubclass = Core.playerArmorSubclass
 local tryChooseAppend     = Core.tryChooseAppend
@@ -18,7 +18,7 @@ function J:PlanBest(cmp, opts, used)
   local hadPending = false
 
   -- Cloak, Neck, Ring1, Ring2, Trinket1, Trinket2
-  for _, slotID in ipairs({15,2,11,12,13,14}) do
+  for _, slotID in ipairs(Core.JEWELRY_SLOTS) do
     tryChooseAppend(plan, changes, slotID, cmp, expectedArmor, used)
   end
 

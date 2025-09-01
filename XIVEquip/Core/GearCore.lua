@@ -9,8 +9,10 @@ XIVEquip.Gear_Core        = Core
 -- Public constants/lookups (unchanged)
 -- =========================
 
+Core.ARMOR                = Const.ARMOR
 Core.ARMOR_SLOTS          = Const.ARMOR_SLOTS
 Core.JEWELRY              = Const.JEWELRY
+Core.JEWELRY_SLOTS        = Const.JEWELRY_SLOTS
 Core.LOWER_ILVL_ARMOR     = Const.LOWER_ILVL_ARMOR
 Core.LOWER_ILVL_JEWELRY   = Const.LOWER_ILVL_JEWELRY
 Core.INV_BY_EQUIPLOC      = Const.INV_BY_EQUIPLOC
@@ -154,18 +156,9 @@ end
 -- jewelry and cloaks are always valid
 function Core.equipIsValidArmorType(itemID, slotID, expectedArmorSubclass)
   if not itemID then return false end
-
-  -- If this isn't one of the armor slots we restrict, always allow.
-  -- quick lookup: is this slot one of the restricted armor slots?
-  local isArmorSlot = false
-  for _, sid in ipairs(Const.ARMOR_SLOTS) do
-    if sid == slotID then
-      isArmorSlot = true
-      break
-    end
-  end
-  if not isArmorSlot then
-    return true -- never restrict non-armor slots
+  -- If this slot isn't restricted armor, always allow
+  if not Core.ARMOR[slotID] then
+    return true
   end
 
   local _, _, _, _, _, classID, subclassID = GetItemInfoInstant(itemID)
@@ -174,8 +167,8 @@ function Core.equipIsValidArmorType(itemID, slotID, expectedArmorSubclass)
     return false
   end
 
-  if classID ~= 4 then -- Armor = 4 (retail Enum.ItemClass.Armor)
-    return true        -- not an armor item, don’t restrict
+  if classID ~= Core.ITEMCLASS_ARMOR then
+    return true -- not an armor item, don’t restrict
   end
 
   expectedArmorSubclass = expectedArmorSubclass or (Core.playerArmorSubclass and Core.playerArmorSubclass())

@@ -258,11 +258,40 @@ end)
 
 -- /xive score <link> [scale]
 C.RegisterRoot("score", function(rest)
-  local link, tail = tostring(rest or ""):match('((|c%x+|Hitem:[^|]+|h[^|]*|h|r)|(|Hitem:[^|]+|h[^|]*|h))%s*(.*)$')
-  if not link then
+  local s = tostring(rest or "")
+  local link, tail = nil, ""
+  -- Try to locate a full item link (optionally prefixed with a color code) like:
+  -- |cff....|Hitem:...|h[Name]|h|r  or  |Hitem:...|h[Name]|h
+  local hpos = s:find("|Hitem:")
+  if hpos then
+    -- If there's a color code immediately before the |Hitem:, include it
+    local pre = s:sub(1, hpos - 1)
+    local cstart = pre:match("()|c%x%x%x%x%x%x%x%x")
+    local startpos = cstart or hpos
+    -- Prefer the full terminator |h|r
+    local endpos = s:find("|h|r", hpos, true)
+    if endpos then
+      link = s:sub(startpos, endpos + 3) -- include |h|r
+      tail = s:sub(endpos + 4)
+    else
+      -- Fallback: find the next |h
+      local endpos2 = s:find("|h", hpos, true)
+      if endpos2 then
+        link = s:sub(startpos, endpos2 + 1)
+        tail = s:sub(endpos2 + 2)
+      end
+    end
+  else
+    -- No explicit item link markers found; treat first token as the link
+    local a, b = s:match("^(%S+)%s*(.*)$")
+    link, tail = a, b or ""
+  end
+  link = link and trim(link) or nil
+  tail = trim(tail or "")
+  if not link or link == "" then
     print(PREFIX .. "Usage: /xive score <itemLink> [scaleName]"); return
   end
-  local scaleQuery = trim(tail)
+  local scaleQuery = tail
 
   -- If a scale is given and Pawn is available, try it first
   if scaleQuery ~= "" and XIVEquip.Pawn and type(XIVEquip.Pawn.ScoreItemLinkWithScale) == "function" then
