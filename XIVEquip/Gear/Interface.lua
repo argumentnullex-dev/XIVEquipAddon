@@ -21,11 +21,13 @@ local _pendingSpecSaveToken
 
 -- Save the current equipment into a "Spec.xive" set *after* spec has stabilized.
 -- Delay defaults to ~0.7s; bumped if needed.
+-- [XIVEquip-AUTO] C:_saveSpecSetSoon: Helper for Gear module.
 function C:_saveSpecSetSoon(delay)
   delay = delay or 0.7
   local token = {}
   _pendingSpecSaveToken = token
 
+  -- Callback used in Interface.lua to run inline logic.
   C_Timer.After(delay, function()
     -- If a newer request came in, skip this one
     if _pendingSpecSaveToken ~= token then return end
@@ -61,6 +63,7 @@ function C:_saveSpecSetSoon(delay)
 end
 
 -- PlanBest returns (changes, pending, plan)
+-- [XIVEquip-AUTO] C:PlanBest: Helper for Gear module.
 function C:PlanBest(cmp, opts)
   opts = opts or {}
 
@@ -88,6 +91,7 @@ function C:PlanBest(cmp, opts)
 end
 
 -- EquipBest unchanged (no fallback/retry)
+-- [XIVEquip-AUTO] C:EquipBest: Applies equipment changes (gear/weapons) for the addon.
 function C:EquipBest()
   if InCombatLockdown() then
     print((L.AddonPrefix or "XIVEquip: ") .. (L.CannotCombat or "Cannot equip while in combat."))
@@ -100,8 +104,40 @@ function C:EquipBest()
 
   local _, _, plan = C:PlanBest(cmp)
 
-  for _, pick in ipairs(plan) do
+  -- Equip can be async/locked; equip sequentially with small delays and lock checks.
+  local i = 1
+  -- step: Gear/loadout logic: step.
+  local function step()
+    if i > #plan then
+      -- Done
+      if showEquip and not anyChange then
+        print((L.AddonPrefix or "XIVEquip: ") .. (L.NoUpgrades or "No upgrades found."))
+      end
+
+      Comparers:EndPass()
+
+      -- After equipping (and outside combat), queue a deferred save to the spec-named set
+      if not InCombatLockdown() then
+        C:_saveSpecSetSoon(0.7)
+      end
+      return
+    end
+
+    if InCombatLockdown() then
+      print((L.AddonPrefix or "XIVEquip: ") .. (L.CannotCombat or "Cannot equip while in combat."))
+      Comparers:EndPass()
+      return
+    end
+
+    local pick = plan[i]
     local slotID  = pick.targetSlot
+
+    -- Wait while the target slot is locked (common for MH/OH during swaps).
+    if slotID and IsInventoryItemLocked and IsInventoryItemLocked(slotID) then
+      C_Timer.After(0.05, step)
+      return
+    end
+
     local oldLink = (slotID and GetInventoryItemLink("player", slotID)) or "|cff888888(None)|r"
     local newLink = equipByBasics(pick) or oldLink
     if newLink ~= oldLink then
@@ -110,18 +146,16 @@ function C:EquipBest()
         print((L.AddonPrefix or "XIVEquip: ") .. string.format(L.ReplacedWith or "Replaced %s with %s.", oldLink, newLink))
       end
     end
+
+    i = i + 1
+    C_Timer.After(0.05, step)
   end
 
-  if showEquip and not anyChange then
-    print((L.AddonPrefix or "XIVEquip: ") .. (L.NoUpgrades or "No upgrades found."))
-  end
+  step()
 
-  Comparers:EndPass()
+  -- NOTE: EndPass + spec-save now happen in step() when finished.
+  return
 
-  -- After equipping (and outside combat), queue a deferred save to the spec-named set
-  if not InCombatLockdown() then
-    C:_saveSpecSetSoon(0.7)
-  end
 end
 
 -- =========================
@@ -129,6 +163,7 @@ end
 -- =========================
 -- Saves the *currently equipped* items to a gear set named "<Spec>.xive".
 -- If the set doesn't exist yet, it is created (using the spec icon if available), then saved.
+-- [XIVEquip-AUTO] C:SaveEquippedToSpecSet: Helper for Gear module.
 function C:SaveEquippedToSpecSet()
   -- Be graceful if the API isn't available or we're in combat
   if type(C_EquipmentSet) ~= "table" or InCombatLockdown and InCombatLockdown() then return end

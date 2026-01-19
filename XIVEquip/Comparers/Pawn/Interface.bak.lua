@@ -8,11 +8,13 @@ XIVEquip = XIVEquip or {}
 -- /---------- tiny logger (local chat only) ----------/
 local PREFIX = "|cff66ccffXIVEquip|r"
 local Log = XIVEquip.Log
+-- log: Comparer integration: log.
 local function log(...) Log.Debug(PREFIX, ...) end
 
 -- /---------- character key helpers ----------/
 
 -- returns name and realm (includes spaces)
+-- [XIVEquip-AUTO] currentCharPieces: Helper for Pawn module.
 local function currentCharPieces()
   local name  = UnitName("player") -- just the char name
   local realm = GetRealmName()     -- display realm, includes spaces
@@ -20,6 +22,7 @@ local function currentCharPieces()
 end
 
 -- returns a character Key that matches how Pawn saves Character-Realm in the SV Scales
+-- [XIVEquip-AUTO] buildCharKey: Builds derived data structures used by the addon.
 local function buildCharKey()
   -- If Pawn already built it, reuse (optional but nice)
   if type(_G.PawnPlayerFullName) == "string" and _G.PawnPlayerFullName ~= "" then
@@ -31,6 +34,7 @@ local function buildCharKey()
 end
 
 -- true if PerCharacterOptions has a Visible=true entry for THIS character
+-- [XIVEquip-AUTO] isVisibleForThisChar: Predicate helper used for feature gating or filtering.
 local function isVisibleForThisChar(pco)
   if type(pco) ~= "table" then return false end
   local charKey = buildCharKey()
@@ -40,6 +44,7 @@ local function isVisibleForThisChar(pco)
 end
 
 -- Choose the best active scale for current spec
+-- [XIVEquip-AUTO] getPlayerClassSpec: Returns player class spec.
 local function getPlayerClassSpec()
   local _, _, classID = UnitClass("player")
   local specIndex = GetSpecialization() -- 1..4 (this is what Pawn SV uses)
@@ -48,11 +53,13 @@ end
 
 -- /---------- Spec Selection Helpers ---------------------/
 -- Normalize for name comparisons (lowercase, strip spaces/punctuation)
+-- [XIVEquip-AUTO] _norm: Helper for Pawn module.
 local function _norm(s)
   return (tostring(s or ""):lower():gsub("[%s%p]+", ""))
 end
 
 -- Does this scale's name "equal" the player's spec name?
+-- [XIVEquip-AUTO] _nameEqualsSpec: Helper for Pawn module.
 local function _nameEqualsSpec(scaleName, specName)
   if not scaleName or not specName then return false end
   local lhs = _norm(scaleName)
@@ -64,6 +71,7 @@ local function _nameEqualsSpec(scaleName, specName)
 end
 
 -- Does this scale's name contain the player's spec name?
+-- [XIVEquip-AUTO] _nameContainsSpec: Helper for Pawn module.
 local function _nameContainsSpec(scaleName, specName)
   if not scaleName or not specName then return false end
   local s = scaleName:lower()
@@ -73,6 +81,7 @@ local function _nameContainsSpec(scaleName, specName)
 end
 
 -- /---------- SV readers (authoritative source) ----------/
+-- [XIVEquip-AUTO] readAllSVScalesFromPawn: Helper for Pawn module.
 local function readAllSVScalesFromPawn()
   local Common = rawget(_G, "PawnCommon")
   if type(Common) ~= "table" or type(Common.Scales) ~= "table" then
@@ -82,6 +91,7 @@ local function readAllSVScalesFromPawn()
 end
 
 -- returns a classification of the SV Scale Record
+-- [XIVEquip-AUTO] classifyScaleRecord: Helper for Pawn module.
 local function classifyScaleRecord(s, key)
   -- Provider first (authoritative)
   local isProvider = (type(s.Provider) == "string" and s.Provider ~= "")
@@ -98,6 +108,7 @@ local function classifyScaleRecord(s, key)
 end
 
 -- returns a list of all Scales in a normalized format
+-- [XIVEquip-AUTO] getAllScales: Returns all scales.
 local function getAllScales()
   local out = {}
   local Scales = readAllSVScalesFromPawn()
@@ -124,6 +135,7 @@ local function getAllScales()
 end
 
 -- returns a list of all *active* scales in a normalied format
+-- [XIVEquip-AUTO] getActiveScales: Returns active scales.
 local function getActiveScales()
   local all = getAllScales()
   local act = {}
@@ -135,6 +147,7 @@ end
 
 -- /========== VALUES SECTION (custom vs provider) ==========/
 -- Try a few Pawn API spellings to fetch provider weights, if your build exposes them.
+-- [XIVEquip-AUTO] tryGetProviderValues: Helper for Pawn module.
 local function tryGetProviderValues(keyOrName)
   local cands = {
     _G.PawnGetScaleValues,
@@ -169,6 +182,7 @@ local function findActiveByQuery(q)
 end
 
 -- Get values table for a normalized scale entry
+-- [XIVEquip-AUTO] getScaleValuesForEntry: Returns scale values for entry.
 local function getScaleValuesForEntry(entry)
   if not entry or type(entry) ~= "table" then
     return nil, nil, "bad-arg"
@@ -240,6 +254,7 @@ local function GetItemStatsCompat(itemLink)
   -- return nil
 end
 
+-- fallbackScoreWithValues: Comparer integration: fallback score with values.
 local function fallbackScoreWithValues(itemLink, values)
   if not itemLink then return nil end
   local equipLoc = select(4, GetItemInfoInstant(itemLink))
@@ -385,6 +400,7 @@ local function GetWeaponDamageAndSpeed(link)
 
   local minD, maxD, speed
 
+  -- grab: Comparer integration: grab.
   local function grab(s)
     if type(s) ~= "string" then return end
     -- "5 - 12 Damage"
@@ -403,6 +419,7 @@ local function GetWeaponDamageAndSpeed(link)
 end
 
 -- Pretty dump of raw GetItemStats + weighted contributions (fallback path)
+-- [XIVEquip-AUTO] _dumpItemStatsAndContrib: Helper for Pawn module.
 local function _dumpItemStatsAndContrib(link, scaleEntry)
   local stats = GetItemStatsCompat(link)
   if type(stats) ~= "table" then
@@ -489,6 +506,7 @@ local function _dumpItemStatsAndContrib(link, scaleEntry)
 end
 
 -- Core scoring helpers
+-- [XIVEquip-AUTO] scoreItemWithEntry: Computes a score used to compare candidate items.
 local function scoreItemWithEntry(itemLink, entry)
   if not entry then return nil, "no-scale" end
   local vals = (entry.type == "custom") and entry.values
@@ -500,6 +518,7 @@ local function scoreItemWithEntry(itemLink, entry)
   return nil, "no-scoring-path"
 end
 
+-- scoreItemAuto: Comparer integration: score item auto.
 local function scoreItemAuto(itemLink)
   local best = chooseBestActiveScaleForPlayer()
   if not best then return nil, "no-active-scale" end
@@ -507,6 +526,7 @@ local function scoreItemAuto(itemLink)
   return v, src, best
 end
 
+-- scoreItemAs: Comparer integration: score item as.
 local function scoreItemAs(itemLink, query)
   if not query or query == "" then return nil, "no-query" end
   local needle = query:lower()
@@ -524,22 +544,28 @@ local function scoreItemAs(itemLink, query)
 end
 
 -- Expose to other modules now that we have a stable contract
+-- [XIVEquip-AUTO] XIVEquip.PawnGetActiveScales: Helper for Pawn module.
 function XIVEquip.PawnGetActiveScales() return getActiveScales() end
 
+-- XIVEquip.PawnGetAllScales: Comparer integration: pawn get all scales.
 function XIVEquip.PawnGetAllScales() return getAllScales() end
 
+-- XIVEquip.PawnGetScaleValues: Comparer integration: pawn get scale values.
 function XIVEquip.PawnGetScaleValues(entry) return getScaleValuesForEntry(entry) end
 
+-- XIVEquip.PawnBestActiveScale: Comparer integration: pawn best active scale.
 function XIVEquip.PawnBestActiveScale()
   -- chooseBestActiveScaleForPlayer is the local you already have
   return (chooseBestActiveScaleForPlayer())
 end
 
+-- XIVEquip.PawnScoreLinkAuto: Comparer integration: pawn score link auto.
 function XIVEquip.PawnScoreLinkAuto(itemLink)
   -- scoreItemAuto is your local that picks the best active scale
   return scoreItemAuto(itemLink) -- returns value, sourceTag, scaleEntryUsed
 end
 
+-- XIVEquip.PawnScoreLocationAuto: Comparer integration: pawn score location auto.
 function XIVEquip.PawnScoreLocationAuto(location)
   -- Accepts an ItemLocation (bags/equipped) or an inventory slot number.
   local link
@@ -577,10 +603,13 @@ local function getScaleValuesForEntry(entry)
 end
 
 -- /---------- public API (for other modules) ----------/
+-- [XIVEquip-AUTO] XIVEquip.GetActivePawnScales: Helper for Pawn module.
 function XIVEquip.GetActivePawnScales() return getActiveScales() end
 
+-- XIVEquip.GetAllPawnScales: Comparer integration: get all pawn scales.
 function XIVEquip.GetAllPawnScales() return getAllScales() end
 
+-- XIVEquip.GetPawnScaleValues: Comparer integration: get pawn scale values.
 function XIVEquip.GetPawnScaleValues(entry) return getScaleValuesForEntry(entry) end
 
 -- Public: returns current spec index/name and the exact scale entry
@@ -618,6 +647,7 @@ function XIVEquip.PawnGetActiveTooltipHeader()
 end
 
 -- /---------- slash command printing helpers ----------/
+-- [XIVEquip-AUTO] printActive: Helper for Pawn module.
 local function printActive()
   local list = getActiveScales()
   if #list == 0 then
@@ -630,6 +660,7 @@ local function printActive()
   end
 end
 
+-- printAll: Comparer integration: print all.
 local function printAll(filter)
   local list = getAllScales()
   local needle = filter and filter:lower() or nil
@@ -646,6 +677,7 @@ local function printAll(filter)
   if shown == 0 then print(PREFIX, "No scales matched.") end
 end
 
+-- printWhoAmI: Comparer integration: print who am i.
 local function printWhoAmI()
   local name, realm = currentCharPieces()
   local charKey = buildCharKey()
@@ -656,6 +688,7 @@ local function printWhoAmI()
 end
 
 -- Dump weights for one ACTIVE scale by substring of name or key
+-- [XIVEquip-AUTO] printDump: Helper for Pawn module.
 local function printDump(rest)
   local q = (rest or ""):match("^%s*(.-)%s*$")
   if q == "" then
@@ -689,6 +722,7 @@ local function printDump(rest)
   end
 end
 
+-- extractItemLink: Comparer integration: extract item link.
 local function extractItemLink(text)
   if not text or text == "" then return nil end
 
@@ -711,10 +745,12 @@ local function extractItemLink(text)
 end
 
 -- escape a string so we can gsub it out safely
+-- [XIVEquip-AUTO] escape_for_pattern: Helper for Pawn module.
 local function escape_for_pattern(s)
   return (s:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1"))
 end
 
+-- printScoreAuto: Comparer integration: print score auto.
 local function printScoreAuto(rest)
   local link = extractItemLink(rest)
   if not link then
@@ -733,6 +769,7 @@ local function printScoreAuto(rest)
   _dumpItemStatsAndContrib(link, scale) -- keep this; very useful
 end
 
+-- printScoreAs: Comparer integration: print score as.
 local function printScoreAs(rest)
   local link = extractItemLink(rest)
   if not link then
@@ -758,6 +795,7 @@ end
 
 -- /---------- slash ----------/
 SLASH_XIVEPAWN1 = "/xivepawn"
+-- SlashCmdList["XIVEPAWN"]: Comparer integration: slash cmd list xivepawn.
 SlashCmdList["XIVEPAWN"] = function(msg)
   msg = (msg or ""):match("^%s*(.-)%s*$")
   local cmd, rest = msg:match("^(%S+)%s*(.*)$"); cmd = cmd and cmd:lower() or ""

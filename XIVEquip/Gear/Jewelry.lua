@@ -9,6 +9,7 @@ local playerArmorSubclass = Core.playerArmorSubclass
 local tryChooseAppend     = Core.tryChooseAppend
 
 -- PlanBest returns (changes, pending, plan); accepts shared `used` table
+-- [XIVEquip-AUTO] J:PlanBest: Helper for Gear module.
 function J:PlanBest(cmp, opts, used)
   opts = opts or {}
   used = used or {}

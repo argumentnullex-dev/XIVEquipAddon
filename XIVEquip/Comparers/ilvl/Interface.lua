@@ -2,10 +2,12 @@
 local addon, XIVEquip = ...
 XIVEquip = XIVEquip or {}
 
+-- [XIVEquip-AUTO] Inline no-op logger fallback used when XIVEquip.Log isn't available yet.
 local Log = XIVEquip.Log or { Debug=function() end }
 
 -- --- Helpers to obtain a link & item level from a location ------------------
 
+-- [XIVEquip-AUTO] linkFromLocation: Helper for ilvl module.
 local function linkFromLocation(location)
   -- ItemLocation (bags/equipped)
   if C_Item and C_Item.GetItemLink and type(location) == "table" then
@@ -20,6 +22,7 @@ local function linkFromLocation(location)
   return nil
 end
 
+-- getIlvlFromLink: Comparer integration: get ilvl from link.
 local function getIlvlFromLink(link)
   if not link then return 0 end
   if GetDetailedItemLevelInfo then
@@ -34,6 +37,7 @@ local function getIlvlFromLink(link)
   return 0
 end
 
+-- getIlvlFromLocation: Comparer integration: get ilvl from location.
 local function getIlvlFromLocation(location)
   -- Prefer the location-based API when possible
   if C_Item and C_Item.GetCurrentItemLevel and type(location) == "table" then
@@ -47,6 +51,7 @@ end
 -- --- Public (addon-scoped) helpers used by Export.lua -----------------------
 
 -- Score an item by ItemLocation or slot id strictly by ilvl
+-- [XIVEquip-AUTO] XIVEquip.Ilvl_ScoreLocation: Computes a score used to compare candidate items.
 function XIVEquip.Ilvl_ScoreLocation(location)
   return getIlvlFromLocation(location) or 0
 end
@@ -59,6 +64,7 @@ function XIVEquip.Ilvl_DebugScore(location)
 end
 
 -- Tooltip header line for UI
+-- [XIVEquip-AUTO] XIVEquip.Ilvl_GetActiveTooltipHeader: Helper for ilvl module.
 function XIVEquip.Ilvl_GetActiveTooltipHeader()
   return "Comparer: Item Level"
 end

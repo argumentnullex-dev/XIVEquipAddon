@@ -34,6 +34,7 @@ local UIDropDownMenu_AddButton = _G.UIDropDownMenu_AddButton or UIDropDownMenu_A
 ---@field SetScript fun(self: CheckButton, script: string, fn: fun(self: CheckButton))
 
 -- Return map of comparer internal names -> display labels
+-- [XIVEquip-AUTO] comparerNames: Helper for Settings module.
 local function comparerNames()
   local list = { ["default"] = L.Settings_Default or "Auto (Pawn → ilvl)" }
   if XIVEquip.Comparers and XIVEquip.Comparers.All then
@@ -44,6 +45,7 @@ local function comparerNames()
   return list
 end
 
+-- BuildSettingsPanel: Settings handling: build settings panel.
 local function BuildSettingsPanel()
   local s = XIVEquip_Settings
   local panel = CreateFrame("Frame")
@@ -68,11 +70,13 @@ local function BuildSettingsPanel()
   UIDropDownMenu_SetWidth(dd, 220)
 
   local names = comparerNames()
+  -- Callback used in Settings.lua to run inline logic.
   UIDropDownMenu_Initialize(dd, function(self, level)
     local info
     for value, label in pairs(names) do
       info = UIDropDownMenu_CreateInfo()
       info.text = label
+      -- info.func: Settings handling: func.
       info.func = function()
         s.SelectedComparer = value
         if XIVEquip.Comparers and XIVEquip.Comparers.Initialize then
@@ -98,6 +102,7 @@ local function BuildSettingsPanel()
   cbLogin:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 18, -16)
   cbLogin.Text:SetText(L.Settings_LoginMsgs or "Show login message")
   cbLogin:SetChecked(s.Messages.Login)
+  -- Callback used in Settings.lua to run inline logic.
   cbLogin:SetScript("OnClick", function(self) s.Messages.Login = self:GetChecked() end)
 
   -- Messages: equip
@@ -106,6 +111,7 @@ local function BuildSettingsPanel()
   cbEquip:SetPoint("TOPLEFT", cbLogin, "BOTTOMLEFT", 0, -8)
   cbEquip.Text:SetText(L.Settings_EquipMsgs or "Show equip messages")
   cbEquip:SetChecked(s.Messages.Equip)
+  -- Callback used in Settings.lua to run inline logic.
   cbEquip:SetScript("OnClick", function(self) s.Messages.Equip = self:GetChecked() end)
 
   -- Debug checkbox
@@ -114,6 +120,7 @@ local function BuildSettingsPanel()
   cbDebug:SetPoint("TOPLEFT", cbEquip, "BOTTOMLEFT", 0, -8)
   cbDebug.Text:SetText(L.Settings_Debug or "Enable debug logging")
   cbDebug:SetChecked(s.Debug and true or false)
+  -- Callback used in Settings.lua to run inline logic.
   cbDebug:SetScript("OnClick", function(self) s.Debug = self:GetChecked() and true or false end)
 
   -- Auto-equip on spec change (NEW)
@@ -122,6 +129,7 @@ local function BuildSettingsPanel()
   cbAuto:SetPoint("TOPLEFT", cbDebug, "BOTTOMLEFT", 0, -8)
   cbAuto.Text:SetText(L.Settings_AutoSpecEquip or "Auto-equip & save set on spec change")
   cbAuto:SetChecked(s.AutoSpecEquip ~= false)
+  -- Callback used in Settings.lua to run inline logic.
   cbAuto:SetScript("OnClick", function(self)
     s.AutoSpecEquip = self:GetChecked() and true or false
   end)
@@ -139,6 +147,7 @@ end
 -- Register & defaults
 local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
+-- Callback used in Settings.lua to run inline logic.
 f:SetScript("OnEvent", function(_, e, name)
   if e == "ADDON_LOADED" and name == addon then
     XIVEquip_Settings  = XIVEquip_Settings or {}

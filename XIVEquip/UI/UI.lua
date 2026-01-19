@@ -62,8 +62,10 @@ local STAT_TO_PAWN             = {
 local GetItemStatsCompat       =
     (type(GetItemStats) == "function" and GetItemStats) or
     (C_Item and C_Item.GetItemStats) or
+    -- [XIVEquip-AUTO] No-op placeholder callback used as a safe default.
     function() return nil end
 
+-- computeStatDiff: UI wiring: compute stat diff.
 local function computeStatDiff(oldLink, newLink)
   local get = GetItemStatsCompat
   local diff = {}
@@ -103,6 +105,7 @@ local function weightDeltas(rawDiff, values)
 end
 
 -- Retail item level (works on links)
+-- [XIVEquip-AUTO] GetIlvl: Returns ilvl.
 local function GetIlvl(link)
   if type(GetDetailedItemLevelInfo) == "function" then
     local ok, v = pcall(GetDetailedItemLevelInfo, link)
@@ -113,6 +116,7 @@ local function GetIlvl(link)
 end
 
 -- If PlanBest didn't populate deltas, compute them now
+-- [XIVEquip-AUTO] ensureDeltas: Helper for UI module.
 local function ensureDeltas(c)
   -- score delta (Pawn helpers from Pawn.lua)
   if (not c.deltaScore) or c.deltaScore == 0 then
@@ -142,6 +146,7 @@ local function ensureDeltas(c)
 end
 
 -- only silence the LOGIN banner during preview; never touch Equip prints
+-- [XIVEquip-AUTO] withLoginSilenced: Helper for UI module.
 local function withLoginSilenced(fn)
   local msgs = _G.XIVEquip_Settings and _G.XIVEquip_Settings.Messages
   local prev = msgs and msgs.Login
@@ -152,6 +157,7 @@ local function withLoginSilenced(fn)
 end
 
 -- Use saved button position if present, otherwise sensible defaults near the portrait
+-- [XIVEquip-AUTO] anchorButton: Helper for UI module.
 local function anchorButton()
   if not btn then return end
   btn:ClearAllPoints()
@@ -175,6 +181,7 @@ local function anchorButton()
   btn:Show()
 end
 
+-- saveButtonPosition: UI wiring: save button position.
 local function saveButtonPosition()
   if not btn then return end
   local point, rel, relPoint, x, y = btn:GetPoint(1)
@@ -188,6 +195,7 @@ local function saveButtonPosition()
   }
 end
 
+-- createButton: UI wiring: create button.
 local function createButton()
   if btn then return end
   local parent = PaperDollFrame or CharacterFrame or UIParent
@@ -199,7 +207,9 @@ local function createButton()
   btn:SetClampedToScreen(true)
   btn:SetMovable(true)
   btn:RegisterForDrag("LeftButton")
+  -- Callback used in UI.lua to run inline logic.
   btn:SetScript("OnDragStart", function(self) if not InCombatLockdown() then self:StartMoving() end end)
+  -- Callback used in UI.lua to run inline logic.
   btn:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing(); saveButtonPosition(); anchorButton()
   end)
@@ -223,6 +233,7 @@ local function createButton()
   btn:SetHighlightTexture(hi)
 
   -- helper to get a stable key for a *physical* item instance (GUID preferred)
+  -- [XIVEquip-AUTO] instanceKeyFromChange: Helper for UI module.
   local function instanceKeyFromChange(c)
     if c and c.newLoc and C_Item and C_Item.GetItemGUID then
       local ok, guid = pcall(C_Item.GetItemGUID, c.newLoc)
@@ -235,6 +246,7 @@ local function createButton()
   end
 
   -- PREVIEW TOOLTIP (no equipping, no chat spam)
+  -- [XIVEquip-AUTO] Callback: Callback used by UI.lua to respond to a timer/event/script hook.
   btn:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:ClearLines()
@@ -248,6 +260,7 @@ local function createButton()
 
     local changes, pending, weaponPlan, tooltipHeader
 
+    -- Callback used in UI.lua to run inline logic.
     withLoginSilenced(function()
       local cmp = XIVEquip.Comparers and XIVEquip.Comparers:StartPass()
 
@@ -304,6 +317,7 @@ local function createButton()
           local map = STAT_TO_PAWN[blizzKey]
           if map and delta ~= 0 then rows[#rows + 1] = { label = map.label, d = delta } end
         end
+        -- Callback used in UI.lua to run inline logic.
         table.sort(rows, function(a, b) return math.abs(a.d) > math.abs(b.d) end)
 
         for i, row in ipairs(rows) do
@@ -330,8 +344,10 @@ local function createButton()
     GameTooltip:Show()
   end)
 
+  -- Callback used in UI.lua to run inline logic.
   btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+  -- Callback used in UI.lua to run inline logic.
   btn:SetScript("OnClick", function()
     if XIVEquip and XIVEquip.EquipBestGear then
       XIVEquip:EquipBestGear()
@@ -341,6 +357,7 @@ local function createButton()
   -- Disable during combat
   btn:RegisterEvent("PLAYER_REGEN_DISABLED")
   btn:RegisterEvent("PLAYER_REGEN_ENABLED")
+  -- Callback used in UI.lua to run inline logic.
   btn:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_REGEN_DISABLED" then self:Disable() else self:Enable() end
   end)
@@ -350,6 +367,7 @@ local function createButton()
 end
 
 -- Show only on the Character (PaperDoll) tab
+-- [XIVEquip-AUTO] onPaperDollShow: Helper for UI module.
 local function onPaperDollShow()
   createButton()
   if btn and PaperDollFrame and btn:GetParent() ~= PaperDollFrame then
@@ -357,12 +375,14 @@ local function onPaperDollShow()
   end
   anchorButton()
 end
+-- onPaperDollHide: UI wiring: on paper doll hide.
 local function onPaperDollHide()
   if btn then btn:Hide() end
 end
 
 local f = CreateFrame("Frame")
 f:RegisterEvent("PLAYER_LOGIN")
+-- Callback used in UI.lua to run inline logic.
 f:SetScript("OnEvent", function()
   if PaperDollFrame then
     if not PaperDollFrame.__XIVEquipHook then

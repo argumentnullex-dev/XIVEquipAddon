@@ -22,6 +22,7 @@ local MH1H = {
 
 -- -------- Spec-aware policy --------
 
+-- [XIVEquip-AUTO] currentSpecID: Helper for Gear module.
 local function currentSpecID()
   local idx = GetSpecialization and GetSpecialization()
   if not idx then return nil end
@@ -30,6 +31,7 @@ end
 
 -- Policy fields:
 -- allow2H, allowDualWield, allowOffhandWeapon, allowShield, allowHoldable, allowMH1H, requireShield
+-- [XIVEquip-AUTO] policyForSpec: Helper for Gear module.
 local function policyForSpec()
   local class = select(2, UnitClass("player"))
   local spec  = currentSpecID()
@@ -91,6 +93,7 @@ local function policyForSpec()
   return P
 end
 
+-- offhandLocAllowed: Gear/loadout logic: offhand loc allowed.
 local function offhandLocAllowed(equipLoc, P)
   if equipLoc == "INVTYPE_SHIELD"      then return P.allowShield end
   if equipLoc == "INVTYPE_HOLDABLE"    then return P.allowHoldable end
@@ -99,10 +102,13 @@ local function offhandLocAllowed(equipLoc, P)
   return false
 end
 
+-- is2H: Gear/loadout logic: is 2 h.
 local function is2H(equipLoc) return equipLoc and MH2H[equipLoc] end
+-- is1H: Gear/loadout logic: is 1 h.
 local function is1H(equipLoc) return equipLoc and MH1H[equipLoc] end
 
 -- Is the *currently equipped* combo valid for this spec policy?
+-- [XIVEquip-AUTO] currentComboValid: Helper for Gear module.
 local function currentComboValid(P, eqMH, eqOH)
   if not (eqMH and eqMH.equipLoc) then return false end
   if is2H(eqMH.equipLoc) then
@@ -124,6 +130,7 @@ end
 
 -- -------- scoring/picks --------
 
+-- [XIVEquip-AUTO] makePick: Helper for Gear module.
 local function makePick(itemLoc, link, equipLoc, slotID, score)
   return {
     loc        = itemLoc,
@@ -136,6 +143,7 @@ local function makePick(itemLoc, link, equipLoc, slotID, score)
   }
 end
 
+-- collectCandidates: Gear/loadout logic: collect candidates.
 local function collectCandidates(cmp, used, P)
   local mh2h, mh1h, oh = {}, {}, {}
   for bag = 0, NUM_BAG_SLOTS do
@@ -165,6 +173,7 @@ local function collectCandidates(cmp, used, P)
   return mh2h, mh1h, oh
 end
 
+-- bestOH: Gear/loadout logic: best oh.
 local function bestOH(ohList, excludeGuid)
   local best, bestScore = nil, -math.huge
   for _, o in ipairs(ohList) do
@@ -180,6 +189,7 @@ end
 -- -------- public --------
 
 -- PlanBest returns (changes, pending, plan)
+-- [XIVEquip-AUTO] W:PlanBest: Helper for Gear module.
 function W:PlanBest(cmp, opts, used)
   opts = opts or {}
   used = used or {}
@@ -205,6 +215,7 @@ function W:PlanBest(cmp, opts, used)
 
   -- Evaluate options
   local best = nil
+  -- better: Gear/loadout logic: better.
   local function better(curr, s) return (not curr) or (s > curr.score) end
 
   -- A) 2H main-hand

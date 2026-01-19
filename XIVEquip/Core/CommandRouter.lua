@@ -6,14 +6,18 @@ XIVEquip.Commands     = XIVEquip.Commands or {}
 local C               = XIVEquip.Commands
 local L               = XIVEquip.L or {}
 local PREFIX          = L.AddonPrefix or "XIVEquip: "
+-- Settings: Core addon plumbing: settings.
 local function Settings() return XIVEquip.Settings end
 
 -- utils
+-- [XIVEquip-AUTO] trim: Helper for Core module.
 local function trim(s) return (tostring(s or ""):match("^%s*(.-)%s*$")) end
+-- split1: Core addon plumbing: split 1.
 local function split1(s)
   local a, b = tostring(s or ""):match("^(%S+)%s*(.*)$")
   return a and string.lower(a) or "", (b or ""):match("^%s*(.-)%s*$")
 end
+-- onoff_to_bool: Core addon plumbing: onoff to bool.
 local function onoff_to_bool(tok)
   tok = string.lower(tostring(tok or ""))
   if tok == "on" or tok == "1" or tok == "true" then return true end
@@ -23,10 +27,12 @@ end
 
 -- help registry
 local helplines = {}
+-- C.Help: Core addon plumbing: help.
 function C.Help(line) helplines[#helplines + 1] = line end
 
 C.Help(" /xive score <link> [scale] – score with active comparer; if [scale] is given, try Pawn scale")
 
+-- print_help: Core addon plumbing: print help.
 local function print_help()
   print(PREFIX .. "Commands:")
   print("  /xive                            – show this help")
@@ -45,16 +51,20 @@ end
 
 -- command framework (hardened)
 local namespaces = {} -- first token -> function(rest)
+-- [XIVEquip-AUTO] ROUTES table holds command -> handler mappings; leaf handlers are functions(rest).
 local ROUTES     = {} -- nested tables -> function(rest)
 
 -- command framework (hardened)
+-- [XIVEquip-AUTO] ROUTES table holds command -> handler mappings; leaf handlers are functions(rest).
 local namespaces = {} -- first token -> function(rest)
 local ROUTES     = {} -- nested tables -> function(rest)
 
+-- C.RegisterNamespace: Core addon plumbing: register namespace.
 function C.RegisterNamespace(ns, fn)
   namespaces[string.lower(tostring(ns or ""))] = fn
 end
 
+-- toPath: Core addon plumbing: to path.
 local function toPath(cmd)
   if type(cmd) == "string" then return { cmd } end
   if type(cmd) == "table" then return cmd end
@@ -96,6 +106,7 @@ local function register(path, fn)
   end
 end
 
+-- C.RegisterRoot: Core addon plumbing: register root.
 function C.RegisterRoot(cmdOrPath, fn) register(cmdOrPath, fn) end
 
 -- NEW: dispatcher that honors default handlers on table nodes ([""])
@@ -148,11 +159,13 @@ end
 
 -- slash bindings
 SLASH_XIVE1 = "/xive"
+-- SlashCmdList["XIVE"]: Core addon plumbing: slash cmd list xive.
 SlashCmdList["XIVE"] = function(msg) dispatch(trim(msg)) end
 
 -- handlers
 
 -- /xive use <comparer>
+-- [XIVEquip-AUTO] Callback: Callback used by CommandRouter.lua to respond to a timer/event/script hook.
 C.RegisterRoot("use", function(rest)
   local want = trim(rest)
   if want == "" then
@@ -176,6 +189,7 @@ C.RegisterRoot("use", function(rest)
 end)
 
 -- /xive debug on|off|toggle
+-- [XIVEquip-AUTO] Callback: Callback used by CommandRouter.lua to respond to a timer/event/script hook.
 C.RegisterRoot("debug", function(rest)
   local S = Settings()
   if not (S and S.SetDebugEnabled and S.GetDebugEnabled) then
@@ -193,6 +207,7 @@ C.RegisterRoot("debug", function(rest)
 end)
 
 -- /xive debug slot <number|clear>
+-- [XIVEquip-AUTO] Callback: Callback used by CommandRouter.lua to respond to a timer/event/script hook.
 C.RegisterRoot({ "debug", "slot" }, function(rest)
   local S = Settings(); if not (S and S.SetDebugSlot) then
     print(PREFIX .. "Settings not available."); return
@@ -209,6 +224,7 @@ C.RegisterRoot({ "debug", "slot" }, function(rest)
 end)
 
 -- /xive startup msg on|off
+-- [XIVEquip-AUTO] Callback: Callback used by CommandRouter.lua to respond to a timer/event/script hook.
 C.RegisterRoot("startup", function(rest)
   local S = Settings(); if not (S and S.SetMessage) then
     print(PREFIX .. "Settings not available."); return
@@ -223,6 +239,7 @@ C.RegisterRoot("startup", function(rest)
 end)
 
 -- /xive gear msg on|off   and   /xive gear preview on|off
+-- [XIVEquip-AUTO] Callback: Callback used by CommandRouter.lua to respond to a timer/event/script hook.
 C.RegisterRoot("gear", function(rest)
   local S = Settings(); if not (S and S.SetMessage) then
     print(PREFIX .. "Settings not available."); return
@@ -244,6 +261,7 @@ C.RegisterRoot("gear", function(rest)
 end)
 
 -- /xive auto spec|sets on|off
+-- [XIVEquip-AUTO] Callback: Callback used by CommandRouter.lua to respond to a timer/event/script hook.
 C.RegisterRoot("auto", function(rest)
   local S = Settings(); if not (S and S.SetAutomation) then
     print(PREFIX .. "Settings not available."); return
@@ -257,6 +275,7 @@ C.RegisterRoot("auto", function(rest)
 end)
 
 -- /xive score <link> [scale]
+-- [XIVEquip-AUTO] Callback: Callback used by CommandRouter.lua to respond to a timer/event/script hook.
 C.RegisterRoot("score", function(rest)
   local s = tostring(rest or "")
   local link, tail = nil, ""
@@ -324,6 +343,7 @@ end)
 
 -- /xivequip
 SLASH_XIVEQUIP1 = "/xivequip"
+-- SlashCmdList["XIVEQUIP"]: Core addon plumbing: slash cmd list xivequip.
 SlashCmdList["XIVEQUIP"] = function()
   if XIVEquip and XIVEquip.Gear and XIVEquip.Gear.EquipBest then
     XIVEquip.Gear:EquipBest()

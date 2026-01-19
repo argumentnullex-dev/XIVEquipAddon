@@ -13,12 +13,14 @@ M:RegisterComparer("Pawn", {
   Label = "Pawn",
 
   -- Available if we can list active scales & there is at least one
+  -- [XIVEquip-AUTO] IsAvailable: Predicate helper used for feature gating or filtering.
   IsAvailable = function()
     return XIVEquip.Pawn and type(XIVEquip.Pawn.GetActiveScales) == "function"
         and #((XIVEquip.Pawn.GetActiveScales and XIVEquip.Pawn.GetActiveScales()) or {}) > 0
   end,
 
   -- Usable for this pass if there’s ≥1 active scale (per-character)
+  -- [XIVEquip-AUTO] PrePass: Helper for Pawn module.
   PrePass = function()
     local list = (XIVEquip.Pawn and type(XIVEquip.Pawn.GetActiveScales) == "function") and
         XIVEquip.Pawn.GetActiveScales() or {}
@@ -26,6 +28,7 @@ M:RegisterComparer("Pawn", {
   end,
 
   -- Score an item by ItemLocation
+  -- [XIVEquip-AUTO] ScoreItem: Computes a score used to compare candidate items.
   ScoreItem = function(location, slotID) -- slot id is passed as a convenience
     local link = Core.linkFromLocation(location)
     if link and XIVEquip.Pawn and type(XIVEquip.Pawn.ScoreItemLink) == "function" then
@@ -36,6 +39,7 @@ M:RegisterComparer("Pawn", {
     return 0
   end,
 
+  -- GetActiveTooltipHeader: Comparer integration: get active tooltip header.
   GetActiveTooltipHeader = function()
     if XIVEquip.Pawn and type(XIVEquip.Pawn.GetTooltipHeader) == "function" then
       return XIVEquip.Pawn.GetTooltipHeader()

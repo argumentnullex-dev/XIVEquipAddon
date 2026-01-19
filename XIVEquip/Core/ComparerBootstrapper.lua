@@ -6,6 +6,7 @@ local M = XIVEquip.Comparers
 
 ---@type Logger
 local Log = (XIVEquip.Log) or
+-- [XIVEquip-AUTO] Defines a default no-op logger table used until a real logger is configured.
 { Debug = function(...) end, Info = function(...) end, Warn = function(...) end, Error = function(...) end }
 local L = (XIVEquip and XIVEquip.L) or {}
 local AddonPrefix = L.AddonPrefix or "XIVEquip: "
@@ -16,18 +17,24 @@ local activeName = "default"
 local runtimeActive = nil
 local lastUsedLabel = nil
 
+-- M:RegisterComparer: Core addon plumbing: register comparer.
 function M:RegisterComparer(name, def)
   registry[string.lower(name)] = def
 end
 
+-- M:Get: Core addon plumbing: get.
 function M:Get(name) return registry[string.lower(name or "")] end
 
+-- M:All: Core addon plumbing: all.
 function M:All() return registry end
 
+-- M:GetActiveName: Core addon plumbing: get active name.
 function M:GetActiveName() return activeName end
 
+-- M:GetActive: Core addon plumbing: get active.
 function M:GetActive() return runtimeActive or self:Get(activeName) end
 
+-- M:GetLastUsedLabel: Core addon plumbing: get last used label.
 function M:GetLastUsedLabel() return lastUsedLabel end
 
 -- Initialize: honor user setting; "default" = prefer Pawn (strict)
@@ -40,6 +47,7 @@ function M:Initialize()
 end
 
 -- Start/End a pass (NO implicit fallback). If PrePass fails, return nil comparer.
+-- [XIVEquip-AUTO] M:StartPass: Helper for Core module.
 function M:StartPass()
   local requested = self:Get(activeName)
   runtimeActive = nil
@@ -74,6 +82,7 @@ function M:StartPass()
   return requested
 end
 
+-- M:EndPass: Core addon plumbing: end pass.
 function M:EndPass()
   runtimeActive = nil
 end

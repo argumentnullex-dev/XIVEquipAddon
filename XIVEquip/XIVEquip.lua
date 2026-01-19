@@ -9,16 +9,20 @@ f:RegisterEvent("PLAYER_LOGIN")
 local status
 
 -- message gates
+-- [XIVEquip-AUTO] msgLogin: Helper for . module.
 local function msgLogin(text)
   if XIVEquip_Settings and XIVEquip_Settings.Messages and XIVEquip_Settings.Messages.Login then
     print(L.AddonPrefix .. text)
   end
 end
+-- msgError: msg error.
 local function msgError(text) print(L.AddonPrefix .. text) end
+-- XIVEquip.ShouldShowEquipMsgs: should show equip msgs.
 function XIVEquip.ShouldShowEquipMsgs()
   return XIVEquip_Settings and XIVEquip_Settings.Messages and XIVEquip_Settings.Messages.Equip
 end
 
+-- Callback used in XIVEquip.lua to run inline logic.
 f:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" and arg1 == addonName then
     -- defaults
@@ -57,6 +61,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
 end)
 
 -- Called by the UI button
+-- [XIVEquip-AUTO] XIVEquip:EquipBestGear: Applies equipment changes (gear/weapons) for the addon.
 function XIVEquip:EquipBestGear()
   if not XIVEquip.Gear or not XIVEquip.Gear.EquipBest then
     msgError(L.NoComparer)

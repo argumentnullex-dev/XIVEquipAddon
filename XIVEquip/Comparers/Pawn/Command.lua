@@ -3,6 +3,7 @@ local addon, XIVEquip = ...
 XIVEquip = XIVEquip or {}
 local Cmd = XIVEquip.Commands
 
+-- pawn_help: Comparer integration: pawn help.
 local function pawn_help()
   print("  /xive pawn                – list Pawn subcommands")
   print("  /xive pawn scales [all]   – list active (or all) scales")
@@ -10,6 +11,7 @@ local function pawn_help()
   print("  /xive pawn score <link> [scale <name>] – score with Pawn (optionally with a specific scale)")
 end
 
+-- Callback used in Command.lua to run inline logic.
 Cmd.RegisterNamespace("pawn", function(rest)
   local sub, tail = rest:match("^(%S+)%s*(.*)$")
   sub = (sub or ""):lower()
@@ -36,10 +38,13 @@ Cmd.RegisterNamespace("pawn", function(rest)
       local PREFIX      = L.AddonPrefix or "XIVEquip: "
 
       -- utils
+      -- [XIVEquip-AUTO] trim: Helper for Pawn module.
       local function trim(s) return (tostring(s or ""):match("^%s*(.-)%s*$")) end
+      -- split1: Comparer integration: split 1.
       local function split1(s)
         local a, b = s:match("^(%S+)%s*(.*)$"); return a and a:lower() or "", (b or ""):match("^%s*(.-)%s*$")
       end
+      -- onoff_to_bool: Comparer integration: onoff to bool.
       local function onoff_to_bool(tok)
         if tok == "on" or tok == "1" or tok == "true" then
           return true
@@ -51,16 +56,20 @@ Cmd.RegisterNamespace("pawn", function(rest)
 
       -- registries
       local namespaces, root, helplines = {}, {}, {}
+      -- C.RegisterNamespace: Comparer integration: register namespace.
       function C.RegisterNamespace(ns, fn) namespaces[ns:lower()] = fn end
 
+      -- C.RegisterRoot: Comparer integration: register root.
       function C.RegisterRoot(cmd, fn) root[cmd:lower()] = fn end
 
+      -- C.Help: Comparer integration: help.
       function C.Help(line) helplines[#helplines + 1] = line end
 
       -- Core contributes one generic comparer tip; modules add their own
       C.Help(" /xive <comparer> score <link> – quick score with a specific comparer (e.g., pawn, ilvl)")
 
       -- help
+      -- [XIVEquip-AUTO] print_help: Helper for Pawn module.
       local function print_help()
         print(PREFIX .. "Commands:")
         print("  /xive                         – show this help")
@@ -79,6 +88,7 @@ Cmd.RegisterNamespace("pawn", function(rest)
       end
 
       -- /xive use <comparer>
+      -- [XIVEquip-AUTO] Callback: Callback used by Command.lua to respond to a timer/event/script hook.
       C.RegisterRoot("use", function(rest)
         local want = trim(rest or "")
         if want == "" then
@@ -102,6 +112,7 @@ Cmd.RegisterNamespace("pawn", function(rest)
       end)
 
       -- /xive debug on|off   and   /xive debug slot <x>
+      -- [XIVEquip-AUTO] Callback: Callback used by Command.lua to respond to a timer/event/script hook.
       C.RegisterRoot("debug", function(rest)
         local sub, tail = split1(rest)
         if sub == "slot" then
@@ -129,6 +140,7 @@ Cmd.RegisterNamespace("pawn", function(rest)
       end)
 
       -- /xive startup msg on|off
+      -- [XIVEquip-AUTO] Callback: Callback used by Command.lua to respond to a timer/event/script hook.
       C.RegisterRoot("startup", function(rest)
         local tok, rest2 = split1(rest)
         if tok ~= "msg" then
@@ -143,6 +155,7 @@ Cmd.RegisterNamespace("pawn", function(rest)
       end)
 
       -- /xive gear msg on|off   and   /xive gear preview on|off
+      -- [XIVEquip-AUTO] Callback: Callback used by Command.lua to respond to a timer/event/script hook.
       C.RegisterRoot("gear", function(rest)
         local sub, rest2 = split1(rest)
         local onoff = onoff_to_bool(split1(rest2))
@@ -164,6 +177,7 @@ Cmd.RegisterNamespace("pawn", function(rest)
       end)
 
       -- /xive auto spec|sets on|off
+      -- [XIVEquip-AUTO] Callback: Callback used by Command.lua to respond to a timer/event/script hook.
       C.RegisterRoot("auto", function(rest)
         local what, rest2 = split1(rest)
         local onoff = onoff_to_bool(split1(rest2))
@@ -175,6 +189,7 @@ Cmd.RegisterNamespace("pawn", function(rest)
       end)
 
       -- /xive score <link>
+      -- [XIVEquip-AUTO] Callback: Callback used by Command.lua to respond to a timer/event/script hook.
       C.RegisterRoot("score", function(rest)
         local link = rest and (rest:match("(|c%x+|Hitem:[^|]+|h[^|]*|h|r)") or rest:match("(|Hitem:[^|]+|h[^|]*|h)"))
         if not link then
@@ -196,6 +211,7 @@ Cmd.RegisterNamespace("pawn", function(rest)
 
       -- namespace dispatch + SLASH handlers (unchanged)
       SLASH_XIVE1 = "/xive"
+      -- SlashCmdList["XIVE"]: Comparer integration: slash cmd list xive.
       SlashCmdList["XIVE"] = function(msg)
         msg = trim(msg or "")
         if msg == "" then return print_help() end
@@ -210,6 +226,7 @@ Cmd.RegisterNamespace("pawn", function(rest)
       end
 
       SLASH_XIVEQUIP1 = "/xivequip"
+      -- SlashCmdList["XIVEQUIP"]: Comparer integration: slash cmd list xivequip.
       SlashCmdList["XIVEQUIP"] = function()
         if XIVEquip and XIVEquip.Gear and XIVEquip.Gear.EquipRecommended then
           XIVEquip.Gear:EquipRecommended()

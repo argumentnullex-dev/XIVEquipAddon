@@ -22,6 +22,7 @@ Core.SLOT_LABEL           = Const.SLOT_LABEL
 
 local ARMOR_SLOTS         = Core.ARMOR_SLOTS
 
+-- debugf: Core addon plumbing: debugf.
 local function debugf(slotID, fmt, ...)
   if Log and Log.Debugf then
     return Log.Debugf(slotID, fmt, ...)
@@ -33,12 +34,14 @@ end
 -- =========================
 
 -- guarded comparer call used by planners (returns 0 on error)
+-- [XIVEquip-AUTO] Core.scoreItem: Computes a score used to compare candidate items.
 function Core.scoreItem(cmp, itemLoc, slotID)
   if not (cmp and cmp.ScoreItem) then return 0 end
   local ok, v = pcall(cmp.ScoreItem, itemLoc, slotID)
   return (ok and type(v) == "number") and v or 0
 end
 
+-- Core.ItemInstanceKey: Core addon plumbing: item instance key.
 function Core.ItemInstanceKey(itemLoc)
   if C_Item and C_Item.GetItemGUID and itemLoc then
     local ok, guid = pcall(C_Item.GetItemGUID, itemLoc)
@@ -50,6 +53,7 @@ function Core.ItemInstanceKey(itemLoc)
   return table.concat({ id or 0, bag or -1, slot or -1 }, ":")
 end
 
+-- Core.itemGUID: Core addon plumbing: item guid.
 function Core.itemGUID(loc)
   if C_Item and C_Item.GetItemGUID and loc then
     local ok, guid = pcall(C_Item.GetItemGUID, loc)
@@ -58,6 +62,7 @@ function Core.itemGUID(loc)
   return nil
 end
 
+-- Core.getItemLevel: Core addon plumbing: get item level.
 function Core.getItemLevel(link, itemLoc)
   -- 1) Prefer ItemLocation if present (most accurate for current ilvl)
   if itemLoc and C_Item and C_Item.DoesItemExist and C_Item.DoesItemExist(itemLoc) then
@@ -84,15 +89,18 @@ function Core.getItemLevel(link, itemLoc)
   return 0
 end
 
+-- Core.getItemLevelFromLink: Core addon plumbing: get item level from link.
 function Core.getItemLevelFromLink(link)
   return Core.getItemLevel(link, nil)
 end
 
+-- Core.getItemLevelFromLocation: Core addon plumbing: get item level from location.
 function Core.getItemLevelFromLocation(loc)
   return Core.getItemLevel(nil, loc)
 end
 
 -- Read currently equipped for a slot (unchanged logic)
+-- [XIVEquip-AUTO] Core.equippedBasics: Helper for Core module.
 function Core.equippedBasics(slotID, comparer)
   local loc = ItemLocation:CreateFromEquipmentSlot(slotID)
   if not (loc and C_Item.DoesItemExist and C_Item.DoesItemExist(loc)) then return nil end
@@ -114,6 +122,7 @@ function Core.equippedBasics(slotID, comparer)
 end
 
 -- Equip a bag item into a specific slot (unchanged logic)
+-- [XIVEquip-AUTO] Core.equipByBasics: Applies equipment changes (gear/weapons) for the addon.
 function Core.equipByBasics(pick)
   if not pick then return nil end
 
@@ -151,11 +160,13 @@ function Core.equipByBasics(pick)
   return (invSlot and GetInventoryItemLink("player", invSlot)) or pick.link
 end
 
+-- Core.equipLocMatchesSlot: Core addon plumbing: equip loc matches slot.
 function Core.equipLocMatchesSlot(equipLoc, slotID)
   local allowed = Core.SLOT_EQUIPLOCS[slotID]
   return allowed and allowed[equipLoc] or false
 end
 
+-- Core.playerArmorSubclass: Core addon plumbing: player armor subclass.
 function Core.playerArmorSubclass()
   local class = select(2, UnitClass("player"))
   local map = {
@@ -178,6 +189,7 @@ end
 
 -- Checks if the given item is valid armor type for the player’s class
 -- jewelry and cloaks are always valid
+-- [XIVEquip-AUTO] Core.equipIsValidArmorType: Applies equipment changes (gear/weapons) for the addon.
 function Core.equipIsValidArmorType(itemID, slotID, expectedArmorSubclass)
   if not itemID then return false end
   -- If this slot isn't restricted armor, always allow
@@ -338,6 +350,7 @@ end
 -- =========================
 -- shared helper to append to plan + build a change row
 -- =========================
+-- [XIVEquip-AUTO] Core.appendPlanAndChange: Helper for Core module.
 function Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
   -- Add to plan
   table.insert(plan, pick)
@@ -368,6 +381,7 @@ end
 
 -- try-pick helper that runs chooseForSlot, appends outputs, and marks `used`.
 -- Returns pick, equipped, chosen (boolean).
+-- [XIVEquip-AUTO] Core.tryChooseAppend: Helper for Core module.
 function Core.tryChooseAppend(plan, changes, slotID, comparer, expectedArmorSubclass, used)
   local pick, equipped = Core.chooseForSlot(comparer, slotID, expectedArmorSubclass, used)
 
@@ -398,6 +412,7 @@ function Core.tryChooseAppend(plan, changes, slotID, comparer, expectedArmorSubc
 end
 
 -- Resolve an item link from an ItemLocation or slotID (unchanged logic)
+-- [XIVEquip-AUTO] Core.linkFromLocation: Helper for Core module.
 function Core.linkFromLocation(location)
   if not location then return nil end
 

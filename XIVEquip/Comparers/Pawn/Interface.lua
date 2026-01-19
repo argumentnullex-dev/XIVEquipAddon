@@ -11,6 +11,7 @@ local function _debugEnabled()
 	return (_G.XIVEquip_Debug == true) or ((_G.XIVEquip_Settings and _G.XIVEquip_Settings.Debug) == true)
 end
 
+-- logDebug: Comparer integration: log debug.
 local function logDebug(fmt, ...)
 	if not _debugEnabled() then return end
 	if XIVEquip and XIVEquip.Log and XIVEquip.Log.Debugf then
@@ -29,10 +30,12 @@ local function readAllSVScalesFromPawn()
 end
 
 -- Character key building & visibility checker
+-- [XIVEquip-AUTO] currentCharPieces: Helper for Pawn module.
 local function currentCharPieces()
 	return UnitName("player"), GetRealmName()
 end
 
+-- buildCharKey: Comparer integration: build char key.
 local function buildCharKey()
 	if type(_G.PawnPlayerFullName) == "string" and _G.PawnPlayerFullName ~= "" then
 		return _G.PawnPlayerFullName
@@ -42,6 +45,7 @@ local function buildCharKey()
 	return name .. "-" .. realm
 end
 
+-- isVisibleForThisChar: Comparer integration: is visible for this char.
 local function isVisibleForThisChar(pco)
 	if type(pco) ~= "table" then return false end
 	local charKey = buildCharKey()
@@ -76,6 +80,7 @@ function Pawn.GetAllScales()
 	return out
 end
 
+-- Pawn.GetActiveScales: Comparer integration: get active scales.
 function Pawn.GetActiveScales()
 	local all = Pawn.GetAllScales() or {}
 	local act = {}
@@ -84,6 +89,7 @@ function Pawn.GetActiveScales()
 end
 
 -- Try to ask possible Pawn API functions for provider values (if exposed)
+-- [XIVEquip-AUTO] tryGetProviderValues: Helper for Pawn module.
 local function tryGetProviderValues(keyOrName)
 	local cands = {
 		_G.PawnGetScaleValues,
@@ -148,6 +154,7 @@ local STATMAP = {
 
 local GetItemStats = GetItemStats or (C_Item and C_Item.GetItemStats)
 
+-- GetItemStatsCompat: Comparer integration: get item stats compat.
 local function GetItemStatsCompat(itemLink)
 	if type(GetItemStats) == "function" then
 		return GetItemStats(itemLink)
@@ -156,12 +163,14 @@ local function GetItemStatsCompat(itemLink)
 end
 
 -- Parse tooltip to extract min/max damage and speed (Retail DF)
+-- [XIVEquip-AUTO] GetWeaponDamageAndSpeed: Returns weapon damage and speed.
 local function GetWeaponDamageAndSpeed(link)
 	if not link or not C_TooltipInfo or not C_TooltipInfo.GetHyperlink then return nil end
 	local tip = C_TooltipInfo.GetHyperlink(link)
 	if not tip or not tip.lines then return nil end
 
 	local minD, maxD, speed
+	-- grab: Comparer integration: grab.
 	local function grab(s)
 		if type(s) ~= "string" then return end
 		local a, b = s:match("(%d+)%s*%-%s*(%d+)%s+[Dd]amage")
@@ -179,6 +188,7 @@ end
 
 -- Compute a numeric score for an itemLink given a values table
 
+-- [XIVEquip-AUTO] computeScoreFromValues: Computes a score used to compare candidate items.
 local function computeScoreFromValues(itemLink, values, slot)
 	if not itemLink or type(values) ~= "table" then return nil end
 	local stats = GetItemStatsCompat(itemLink)
@@ -198,6 +208,7 @@ local function computeScoreFromValues(itemLink, values, slot)
 
 	-- Debug: print a compact list of common weights if logger available
 	if XIVEquip and XIVEquip.Log and XIVEquip.Log.Debugf then
+		-- tv: Comparer integration: tv.
 		local function tv(k) return tostring(values and values[k]) end
 		XIVEquip.Log.Debugf(dbgslot,
 			"[score] weights: Armor=%s Strength=%s Stamina=%s Haste=%s Crit=%s Vers=%s MaxDamage=%s MinDamage=%s Dps=%s Avoid=%s Leech=%s Speed=%s",

@@ -8,6 +8,7 @@ local M = XIVEquip.Comparers
 M:RegisterComparer("ilvl", {
   Label = "Item Level",
 
+  -- IsAvailable: Comparer integration: is available.
   IsAvailable = function()
     return true
   end,
@@ -16,6 +17,7 @@ M:RegisterComparer("ilvl", {
   -- PrePass = function() return true end,
 
   -- Score an item by ItemLocation or slot id using only item level
+  -- [XIVEquip-AUTO] ScoreItem: Computes a score used to compare candidate items.
   ScoreItem = function(location)
     if type(XIVEquip.Ilvl_ScoreLocation) == "function" then
       return tonumber(XIVEquip.Ilvl_ScoreLocation(location)) or 0
@@ -24,6 +26,7 @@ M:RegisterComparer("ilvl", {
   end,
 
   -- Optional header for your hover tooltip
+  -- [XIVEquip-AUTO] GetActiveTooltipHeader: Returns active tooltip header.
   GetActiveTooltipHeader = function()
     if type(XIVEquip.Ilvl_GetActiveTooltipHeader) == "function" then
       return XIVEquip.Ilvl_GetActiveTooltipHeader()
