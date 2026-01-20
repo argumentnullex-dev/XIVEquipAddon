@@ -31,6 +31,7 @@ local helplines = {}
 function C.Help(line) helplines[#helplines + 1] = line end
 
 C.Help(" /xive score <link> [scale] – score with active comparer; if [scale] is given, try Pawn scale")
+C.Help(" /xive diag – print equipped gear and per-slot scores using the active comparer")
 
 -- print_help: Core addon plumbing: print help.
 local function print_help()
@@ -45,6 +46,7 @@ local function print_help()
   print("  /xive gear preview on|off        – toggle hover preview on ERG button")
   print("  /xive auto spec on|off           – auto-equip on spec change")
   print("  /xive auto sets on|off           – auto-save set on equip")
+  print("  /xive diag                       – print equipped gear and scores")
   print("  /xive score <link> [scale]       – score; [scale] uses Pawn if available")
   for _, line in ipairs(helplines) do print("  " .. line) end
 end
@@ -339,6 +341,75 @@ C.RegisterRoot("score", function(rest)
   else
     print(PREFIX .. "No scorer available.")
   end
+end)
+
+-- /xive diag
+-- Prints currently-equipped items (non-empty slots only) along with their score under the active comparer.
+-- This is intended for manual testing: swap items in a slot, re-run /xive diag, and verify the score changes.
+-- [XIVEquip-AUTO] Callback: Callback used by CommandRouter.lua to respond to a timer/event/script hook.
+C.RegisterRoot("diag", function(_)
+  local slots = {
+    { INVSLOT_HEAD,     "Head" },
+    { INVSLOT_NECK,     "Neck" },
+    { INVSLOT_SHOULDER, "Shoulder" },
+    { INVSLOT_BACK,     "Back" },
+    { INVSLOT_CHEST,    "Chest" },
+    { INVSLOT_WRIST,    "Wrist" },
+    { INVSLOT_HAND,     "Hands" },
+    { INVSLOT_WAIST,    "Waist" },
+    { INVSLOT_LEGS,     "Legs" },
+    { INVSLOT_FEET,     "Feet" },
+    { INVSLOT_FINGER1,  "Finger1" },
+    { INVSLOT_FINGER2,  "Finger2" },
+    { INVSLOT_TRINKET1, "Trinket1" },
+    { INVSLOT_TRINKET2, "Trinket2" },
+    { INVSLOT_MAINHAND, "MainHand" },
+    { INVSLOT_OFFHAND,  "OffHand" },
+  }
+
+  -- Header: show which comparer/scale is being used when possible.
+  if XIVEquip and XIVEquip.Pawn and type(XIVEquip.Pawn.GetTooltipHeader) == "function" then
+    print(PREFIX .. XIVEquip.Pawn.GetTooltipHeader())
+  else
+    print(PREFIX .. "Diagnostics: Equipped gear scores")
+  end
+
+  local total = 0
+  for _, s in ipairs(slots) do
+    local slotID, label = s[1], s[2]
+    local link = GetInventoryItemLink("player", slotID)
+    if link then
+      -- Prefer Pawn scoring (active scale selection is handled inside Pawn.ScoreItemLink).
+      local score, src
+      if XIVEquip and XIVEquip.Pawn and type(XIVEquip.Pawn.ScoreItemLink) == "function" then
+        score, src = XIVEquip.Pawn.ScoreItemLink(link, slotID)
+      elseif type(XIVEquip.PawnScoreLinkAuto) == "function" then
+        score, src = XIVEquip.PawnScoreLinkAuto(link)
+      end
+      score = tonumber(score) or 0
+      total = total + score
+
+      -- Include item level when available (purely informational).
+      local ilvl
+      if C_Item and C_Item.GetDetailedItemLevelInfo then
+        local ok, v = pcall(C_Item.GetDetailedItemLevelInfo, link)
+        if ok then ilvl = v end
+      elseif GetDetailedItemLevelInfo then
+        local ok, v = pcall(GetDetailedItemLevelInfo, link)
+        if ok then ilvl = v end
+      end
+
+      if ilvl then
+        print(string.format("%s%s: (ilvl %s) score=%.2f %s", PREFIX, label, tostring(ilvl), score,
+          (src and ("[" .. tostring(src) .. "]") or "")))
+      else
+        print(string.format("%s%s: score=%.2f %s", PREFIX, label, score,
+          (src and ("[" .. tostring(src) .. "]") or "")))
+      end
+    end
+  end
+
+  print(PREFIX .. string.format("Total score (sum of printed slots): %.2f", total))
 end)
 
 -- /xivequip

@@ -1,9 +1,22 @@
-## Interface: 110205, 120000, 120001
+## Interface: 110207, 120000, 120001
 ## Title: XIVEquip
 ## Notes: FFXIV-style 'Equip Recommended Gear' button using Pawn when available.
 ## Author: argument.null.ex@gmail.com (aka Code Ninja)
-## Version: 1.0.5-beta2
+## Version: 1.1.0
 ## SavedVariables: XIVEquip_Settings
+## IconTexture: Interface\AddOns\XIVEquip\Assets\icon_blue_128
+## Category: Equipment
+## Category: Equipment
+## Category-deDE: Ausrüstung
+## Category-esES: Equipo
+## Category-esMX: Equipo
+## Category-frFR: Équipement
+## Category-itIT: Equipaggiamento
+## Category-koKR: 장비
+## Category-ptBR: Equipamento
+## Category-ruRU: Экипировка
+## Category-zhCN: 装备
+## Category-zhTW: 裝備
 
 # Don’t hard-block the addon when Pawn isn’t installed:
 ## OptionalDeps: Pawn
@@ -35,11 +48,9 @@ Gear/Weapons.lua
 Gear/Jewelry.lua
 Gear/Armor.lua
 Gear/Interface.lua
-#Gear/Command.lua
 
 # Automation Features
 Automation/SpecSwitch.lua
-#Automation/Command.lua
 
 # UI Modules
 UI/UI.lua
