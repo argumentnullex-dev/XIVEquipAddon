@@ -2,7 +2,7 @@
 ## Title: XIVEquip
 ## Notes: FFXIV-style 'Equip Recommended Gear' button using Pawn when available.
 ## Author: argument.null.ex@gmail.com (aka Code Ninja)
-## Version: 1.1.0
+## Version: 1.1.1
 ## SavedVariables: XIVEquip_Settings
 ## IconTexture: Interface\AddOns\XIVEquip\Assets\icon_blue_128
 ## Category: Equipment

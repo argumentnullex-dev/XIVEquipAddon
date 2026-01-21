@@ -59,7 +59,16 @@ local STAT_TO_PAWN             = {
   ITEM_MOD_SPEED_RATING_SHORT     = { key = "MovementSpeed", label = "Speed" },
 }
 
-local GetItemStatsCompat       =
+-- GetBoEText: Gets a "BoE" string for item links if necessary.
+local function GetBoEText(itemLink)
+  local bindType = select(14, GetItemInfo(itemLink))
+  if bindType == 2 then -- LE_ITEM_BIND_ON_EQUIP
+    return " |cffff8800[BoE]|r"
+  end
+  return ""
+end
+
+local GetItemStatsCompat =
     (type(GetItemStats) == "function" and GetItemStats) or
     (C_Item and C_Item.GetItemStats) or
     -- [XIVEquip-AUTO] No-op placeholder callback used as a safe default.
@@ -307,9 +316,10 @@ local function createButton()
         local _, wsum = weightDeltas(raw, values)
 
         -- main line: new link, score, ilvl
+        local link    = c.newLink or ""
         GameTooltip:AddLine(string.format(
-          "  %s  |cff7fff7f%+.1f score|r  |cff7fbfff%+d ilvl|r",
-          c.newLink or "", c.deltaScore or 0, dIlvl))
+          "  %s%s  |cff7fff7f%+.1f score|r  |cff7fbfff%+d ilvl|r",
+          link, GetBoEText(link), c.deltaScore or 0, dIlvl))
 
         -- pretty-print mapped secondaries, sorted by |delta|
         local rows = {}

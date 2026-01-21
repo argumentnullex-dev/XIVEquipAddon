@@ -1,15 +1,15 @@
 -- Gear.lua
 local addonName, XIVEquip = ...
-local L         = XIVEquip.L
-local Comparers = XIVEquip.Comparers
-local Hooks     = XIVEquip.Hooks
+local L                   = XIVEquip.L
+local Comparers           = XIVEquip.Comparers
+local Hooks               = XIVEquip.Hooks
 
-local Core = XIVEquip.Gear_Core
+local Core                = XIVEquip.Gear_Core
 
-local C = {}
-XIVEquip.Gear = C
+local C                   = {}
+XIVEquip.Gear             = C
 
-local equipByBasics = Core.equipByBasics
+local equipByBasics       = Core.equipByBasics
 
 -- Upvalue to coalesce multiple save requests
 local _pendingSpecSaveToken
@@ -34,12 +34,13 @@ function C:_saveSpecSetSoon(delay)
     if InCombatLockdown() then return end
 
     -- Re-read the *current* spec now (don’t use any captured value)
-    local idx = GetSpecialization()
+    local idx      = GetSpecialization()
     local specName = (idx and select(2, GetSpecializationInfo(idx))) or "Unknown"
     local setName  = string.format("%s.xive", specName)
 
     if not C_EquipmentSet or not C_EquipmentSet.GetEquipmentSetID then
-      print((L.AddonPrefix or "XIVEquip: ") .. (L.SpecAuto_NoEM or "Cannot save equipment set: Equipment Manager API not available."))
+      print((L.AddonPrefix or "XIVEquip: ") ..
+        (L.SpecAuto_NoEM or "Cannot save equipment set: Equipment Manager API not available."))
       return
     end
 
@@ -83,7 +84,7 @@ function C:PlanBest(cmp, opts)
     local pChanges, pPending, pPlan = planner:PlanBest(cmp, opts, used)
 
     for _, r in ipairs(pChanges or {}) do table.insert(changes, r) end
-    for _, p in ipairs(pPlan or {})    do table.insert(plan,    p) end
+    for _, p in ipairs(pPlan or {}) do table.insert(plan, p) end
     hadPending = hadPending or (pPending == true)
   end
 
@@ -99,27 +100,42 @@ function C:EquipBest()
   end
 
   local cmp = Comparers:StartPass()
-  local showEquip = (_G.XIVEquip_Settings and _G.XIVEquip_Settings.Messages and _G.XIVEquip_Settings.Messages.Equip) ~= false
+  local showEquip = (_G.XIVEquip_Settings and _G.XIVEquip_Settings.Messages and _G.XIVEquip_Settings.Messages.Equip) ~=
+      false
   local anyChange = false
+  local pendingChecks = 0
 
   local _, _, plan = C:PlanBest(cmp)
 
-  -- Equip can be async/locked; equip sequentially with small delays and lock checks.
+  if not plan or #plan == 0 then
+    if showEquip then
+      print((L.AddonPrefix or "XIVEquip: ") .. (L.NoUpgrades or "No upgrades found."))
+    end
+    Comparers:EndPass()
+    return
+  end
+
   local i = 1
-  -- step: Gear/loadout logic: step.
   local function step()
     if i > #plan then
-      -- Done
-      if showEquip and not anyChange then
-        print((L.AddonPrefix or "XIVEquip: ") .. (L.NoUpgrades or "No upgrades found."))
+      local function finish()
+        if pendingChecks > 0 then
+          C_Timer.After(0.05, finish)
+          return
+        end
+
+        if showEquip and not anyChange then
+          print((L.AddonPrefix or "XIVEquip: ") .. (L.NoUpgrades or "No upgrades found."))
+        end
+
+        Comparers:EndPass()
+
+        if not InCombatLockdown() then
+          C:_saveSpecSetSoon(0.7)
+        end
       end
 
-      Comparers:EndPass()
-
-      -- After equipping (and outside combat), queue a deferred save to the spec-named set
-      if not InCombatLockdown() then
-        C:_saveSpecSetSoon(0.7)
-      end
+      C_Timer.After(0.06, finish)
       return
     end
 
@@ -129,33 +145,68 @@ function C:EquipBest()
       return
     end
 
-    local pick = plan[i]
-    local slotID  = pick.targetSlot
+    local pick = plan[i] or {}
+    -- try to identify pick item link from common shapes
+    local pickLink =
+        pick.newLink
+        or (pick.bag and pick.slot and GetContainerItemLink and GetContainerItemLink(pick.bag, pick.slot))
+        or (pick.fromSlot and GetInventoryItemLink("player", pick.fromSlot))
+        or pick.link
+        or ""
 
-    -- Wait while the target slot is locked (common for MH/OH during swaps).
+    local slotID = pick.targetSlot
+        or (pick.equipLoc and Core.INV_BY_EQUIPLOC and Core.INV_BY_EQUIPLOC[pick.equipLoc])
+
+    if pickLink and pickLink ~= "" and GetItemInfo then
+      local name, _, _, ilvl, reqLevel, _, _, _, equipLoc = GetItemInfo(pickLink)
+    end
+
     if slotID and IsInventoryItemLocked and IsInventoryItemLocked(slotID) then
       C_Timer.After(0.05, step)
       return
     end
 
-    local oldLink = (slotID and GetInventoryItemLink("player", slotID)) or "|cff888888(None)|r"
-    local newLink = equipByBasics(pick) or oldLink
-    if newLink ~= oldLink then
-      anyChange = true
-      if showEquip then
-        print((L.AddonPrefix or "XIVEquip: ") .. string.format(L.ReplacedWith or "Replaced %s with %s.", oldLink, newLink))
+    local oldLinkRaw = slotID and GetInventoryItemLink("player", slotID) or nil
+
+    -- perform equip
+    local ok, err = pcall(function() equipByBasics(pick) end)
+
+    pendingChecks = pendingChecks + 1
+    local pendingId = i -- correlate verify to pick index
+
+    local function verifyEquip(slotID0, oldLink0, pickIndex)
+      -- If slot is still locked, retry shortly
+      if slotID0 and IsInventoryItemLocked and IsInventoryItemLocked(slotID0) then
+        C_Timer.After(0.05, function()
+          verifyEquip(slotID0, oldLink0, pickIndex)
+        end)
+        return
       end
+
+      local newLink0 = slotID0 and GetInventoryItemLink("player", slotID0) or nil
+
+      if newLink0 ~= oldLink0 then
+        anyChange = true
+        if showEquip then
+          local oldText = oldLink0 or "|cff888888(None)|r"
+          local newText = newLink0 or "|cff888888(None)|r"
+          print((L.AddonPrefix or "XIVEquip: ") ..
+            string.format(L.ReplacedWith or "Replaced %s with %s.", oldText, newText))
+        end
+      end
+
+      pendingChecks = pendingChecks - 1
     end
+
+    C_Timer.After(0.10, function()
+      verifyEquip(slotID, oldLinkRaw, pendingId)
+    end)
 
     i = i + 1
     C_Timer.After(0.05, step)
   end
 
   step()
-
-  -- NOTE: EndPass + spec-save now happen in step() when finished.
-  return
-
 end
 
 -- =========================

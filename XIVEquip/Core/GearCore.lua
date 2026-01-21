@@ -262,63 +262,70 @@ do
               itemLoc = ItemLocation:CreateFromBagAndSlot(bag, slot)
             end
             local ilvl = Core.getItemLevelFromLink(link)
-            -- if itemLoc and C_Item and C_Item.GetCurrentItemLevel then
-            --   local ok, cur = pcall(C_Item.GetCurrentItemLevel, itemLoc)
-            --   if ok and type(cur) == "number" and cur > 0 then ilvl = cur end
-            -- end
+
             if dbg then dbg(slotID, "candidate ilvl=%s link=%s", tostring(ilvl or "nil"), tostring(link or "nil")) end
 
-            -- Treat ilvl == 1 (heirloom reported as level 1) as "unknown" and don't reject it
-            local passesLowerBound = (type(ilvl) == "number") and ((ilvl == 1) or ilvl >= (equippedIlvl - lowerBound))
-            if passesLowerBound then
-              local itemLoc = (type(ItemLocation) == "table" and type(ItemLocation.CreateFromBagAndSlot) == "function") and
-                  ItemLocation:CreateFromBagAndSlot(bag, slot) or nil
-              local guid = itemGUID(itemLoc)
-              if not (used and guid and used[guid]) then
-                local score = nil
-                if itemLoc and C_Item and C_Item.RequestLoadItemData then
-                  pcall(C_Item.RequestLoadItemData, itemLoc)
-                end
-                if comparer and comparer.ScoreItem then
-                  local ok, v = pcall(comparer.ScoreItem, itemLoc, slotID)
-                  if ok and type(v) == "number" then score = v end
-                end
-                if dbg then
-                  if score then
-                    dbg(slotID, "scored: %s", tostring(score))
-                  else
-                    dbg(slotID, "skip: no score from comparer")
-                  end
-                end
-                if score and (not best or score > best.score) then
-                  if dbg then
-                    dbg(slotID, "new best: score=%s ilvl=%s link=%s (prev=%s)",
-                      tostring(score), tostring(ilvl), tostring(link or "nil"),
-                      tostring(best and best.score or "nil"))
-                  end
-                  best = {
-                    loc        = itemLoc,
-                    guid       = guid,
-                    link       = link,
-                    score      = score,
-                    ilvl       = ilvl,
-                    equipLoc   = equipLoc,
-                    targetSlot = slotID,
-                  }
-                end
-              else
-                if dbg then dbg(slotID, "skip: already used guid=%s link=%s", tostring(guid), tostring(link or "nil")) end
+            -- Skip items the character cannot equip yet (e.g., higher level requirement)
+            local reqLevel = select(5, GetItemInfo(link))
+            if type(reqLevel) == "number" and reqLevel > UnitLevel("player") then
+              if dbg then
+                dbg(slotID, "skip: requires level %s (player=%s) link=%s",
+                  tostring(reqLevel), tostring(UnitLevel("player")), tostring(link or "nil"))
               end
             else
-              if dbg then
-                dbg(slotID, "skip: below lower bound (cand=%s, equipped=%s, bound=%s)",
-                  tostring(ilvl or "nil"), tostring(equippedIlvl or "nil"), tostring(lowerBound))
+              -- Treat ilvl == 1 (heirloom reported as level 1) as "unknown" and don't reject it
+              local passesLowerBound = (type(ilvl) == "number") and ((ilvl == 1) or ilvl >= (equippedIlvl - lowerBound))
+              if passesLowerBound then
+                local itemLoc = (type(ItemLocation) == "table" and type(ItemLocation.CreateFromBagAndSlot) == "function") and
+                    ItemLocation:CreateFromBagAndSlot(bag, slot) or nil
+                local guid = itemGUID(itemLoc)
+                if not (used and guid and used[guid]) then
+                  local score = nil
+                  if itemLoc and C_Item and C_Item.RequestLoadItemData then
+                    pcall(C_Item.RequestLoadItemData, itemLoc)
+                  end
+                  if comparer and comparer.ScoreItem then
+                    local ok, v = pcall(comparer.ScoreItem, itemLoc, slotID)
+                    if ok and type(v) == "number" then score = v end
+                  end
+                  if dbg then
+                    if score then
+                      dbg(slotID, "scored: %s", tostring(score))
+                    else
+                      dbg(slotID, "skip: no score from comparer")
+                    end
+                  end
+                  if score and (not best or score > best.score) then
+                    if dbg then
+                      dbg(slotID, "new best: score=%s ilvl=%s link=%s (prev=%s)",
+                        tostring(score), tostring(ilvl), tostring(link or "nil"),
+                        tostring(best and best.score or "nil"))
+                    end
+                    best = {
+                      loc        = itemLoc,
+                      guid       = guid,
+                      link       = link,
+                      score      = score,
+                      ilvl       = ilvl,
+                      equipLoc   = equipLoc,
+                      targetSlot = slotID,
+                    }
+                  end
+                else
+                  if dbg then dbg(slotID, "skip: already used guid=%s link=%s", tostring(guid), tostring(link or "nil")) end
+                end
+              else
+                if dbg then
+                  dbg(slotID, "skip: below lower bound (cand=%s, equipped=%s, bound=%s)",
+                    tostring(ilvl or "nil"), tostring(equippedIlvl or "nil"), tostring(lowerBound))
+                end
               end
-            end
+            end -- closews the reqLevel gate
           end
         end
       end
     end
+
 
     -- Guard: only upgrade if strictly better than what’s on the character.
     if best then
