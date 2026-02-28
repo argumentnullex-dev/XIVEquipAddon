@@ -60,10 +60,19 @@ local STAT_TO_PAWN             = {
 }
 
 -- GetBoEText: Gets a "BoE" string for item links if necessary.
-local function GetBoEText(itemLink)
+local function GetBoEText(itemLink, itemLoc)
+  if type(itemLink) ~= "string" or itemLink == "" then return "" end
   local bindType = select(14, GetItemInfo(itemLink))
   if bindType == 2 then -- LE_ITEM_BIND_ON_EQUIP
-    return " |cffff8800[BoE]|r"
+    -- Only show [BoE] if the specific item is not yet bound.
+    local bound = false
+    if itemLoc and C_Item and type(C_Item.IsBound) == "function" then
+      local ok, v = pcall(C_Item.IsBound, itemLoc)
+      bound = ok and v or false
+    end
+    if not bound then
+      return " |cffff8800[BoE]|r"
+    end
   end
   return ""
 end
@@ -319,7 +328,7 @@ local function createButton()
         local link    = c.newLink or ""
         GameTooltip:AddLine(string.format(
           "  %s%s  |cff7fff7f%+.1f score|r  |cff7fbfff%+d ilvl|r",
-          link, GetBoEText(link), c.deltaScore or 0, dIlvl))
+          link, GetBoEText(link, c.newLoc), c.deltaScore or 0, dIlvl))
 
         -- pretty-print mapped secondaries, sorted by |delta|
         local rows = {}
@@ -351,7 +360,30 @@ local function createButton()
       end
     end
 
-    GameTooltip:Show()
+    -- Socket potential hints (append at very bottom)
+    local potentials = (XIVEquip.Gear and XIVEquip.Gear.GetSocketPotential and XIVEquip.Gear:GetSocketPotential()) or {}
+    if type(potentials) == "table" and #potentials > 0 then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine("|cffddddddPotential socket upgrades|r")
+      for _, r in ipairs(potentials) do
+        local assumed = string.format("+%d %s", tonumber(r.assumedAmount) or 10, tostring(r.assumedStat or "best secondary"))
+        local delta = tonumber(r.potentialDeltaScore) or 0
+        GameTooltip:AddLine(string.format("  %s |cffaaaaaa(%s, potential %+0.1f score)|r", tostring(r.link or ""), assumed, delta))
+      end
+    end
+
+    
+    -- BoE reminders (append after socket hints, at very bottom)
+    local boes = (XIVEquip.Gear and XIVEquip.Gear.GetBoEReminders and XIVEquip.Gear:GetBoEReminders()) or {}
+    if type(boes) == "table" and #boes > 0 then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine("|cffddddddBind-on-Equip reminders|r")
+      for _, r in ipairs(boes) do
+        GameTooltip:AddLine(string.format("  %s |cffffaa66([BoE] click bind prompt to equip)|r", tostring(r.link or "")))
+      end
+    end
+
+GameTooltip:Show()
   end)
 
   -- Callback used in UI.lua to run inline logic.

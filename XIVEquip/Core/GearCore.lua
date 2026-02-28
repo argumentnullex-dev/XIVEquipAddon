@@ -6,21 +6,67 @@ local Const               = XIVEquip.Const
 XIVEquip.Gear_Core        = Core
 
 -- =========================
+-- Socket potential tracking (per planning pass)
+-- =========================
+
+Core._socketPotential     = Core._socketPotential or {}
+Core._socketPotentialSeen = Core._socketPotentialSeen or {}
+
+function Core.ClearSocketPotential()
+  Core._socketPotential = {}
+  Core._socketPotentialSeen = {}
+end
+
+function Core.AddSocketPotential(key, record)
+  if not key or not record then return end
+  if Core._socketPotentialSeen[key] then return end
+  Core._socketPotentialSeen[key] = true
+  table.insert(Core._socketPotential, record)
+end
+
+function Core.GetSocketPotential()
+  return Core._socketPotential or {}
+end
+
+
+-- =========================
+-- BoE reminders (Bind-on-Equip items that require a confirmation click to equip)
+-- =========================
+function Core.ClearBoEReminders()
+  Core._boeReminders = {}
+  Core._boeRemindersSeen = {}
+end
+
+function Core.AddBoEReminder(key, record)
+  if not key or not record then return end
+  if Core._boeRemindersSeen and Core._boeRemindersSeen[key] then return end
+  Core._boeRemindersSeen = Core._boeRemindersSeen or {}
+  Core._boeRemindersSeen[key] = true
+  Core._boeReminders = Core._boeReminders or {}
+  table.insert(Core._boeReminders, record)
+end
+
+function Core.GetBoEReminders()
+  return Core._boeReminders or {}
+end
+
+
+-- =========================
 -- Public constants/lookups (unchanged)
 -- =========================
 
-Core.ARMOR                = Const.ARMOR
-Core.ARMOR_SLOTS          = Const.ARMOR_SLOTS
-Core.JEWELRY              = Const.JEWELRY
-Core.JEWELRY_SLOTS        = Const.JEWELRY_SLOTS
-Core.LOWER_ILVL_ARMOR     = Const.LOWER_ILVL_ARMOR
-Core.LOWER_ILVL_JEWELRY   = Const.LOWER_ILVL_JEWELRY
-Core.INV_BY_EQUIPLOC      = Const.INV_BY_EQUIPLOC
-Core.SLOT_EQUIPLOCS       = Const.SLOT_EQUIPLOCS
-Core.ITEMCLASS_ARMOR      = Const.ITEMCLASS_ARMOR
-Core.SLOT_LABEL           = Const.SLOT_LABEL
+Core.ARMOR              = Const.ARMOR
+Core.ARMOR_SLOTS        = Const.ARMOR_SLOTS
+Core.JEWELRY            = Const.JEWELRY
+Core.JEWELRY_SLOTS      = Const.JEWELRY_SLOTS
+Core.LOWER_ILVL_ARMOR   = Const.LOWER_ILVL_ARMOR
+Core.LOWER_ILVL_JEWELRY = Const.LOWER_ILVL_JEWELRY
+Core.INV_BY_EQUIPLOC    = Const.INV_BY_EQUIPLOC
+Core.SLOT_EQUIPLOCS     = Const.SLOT_EQUIPLOCS
+Core.ITEMCLASS_ARMOR    = Const.ITEMCLASS_ARMOR
+Core.SLOT_LABEL         = Const.SLOT_LABEL
 
-local ARMOR_SLOTS         = Core.ARMOR_SLOTS
+local ARMOR_SLOTS       = Core.ARMOR_SLOTS
 
 -- debugf: Core addon plumbing: debugf.
 local function debugf(slotID, fmt, ...)
@@ -187,7 +233,7 @@ function Core.playerArmorSubclass()
   return map[class]
 end
 
--- Checks if the given item is valid armor type for the player’s class
+-- Checks if the given item is valid armor type for the player's class
 -- jewelry and cloaks are always valid
 -- [XIVEquip-AUTO] Core.equipIsValidArmorType: Applies equipment changes (gear/weapons) for the addon.
 function Core.equipIsValidArmorType(itemID, slotID, expectedArmorSubclass)
@@ -204,7 +250,7 @@ function Core.equipIsValidArmorType(itemID, slotID, expectedArmorSubclass)
   end
 
   if classID ~= Core.ITEMCLASS_ARMOR then
-    return true -- not an armor item, don’t restrict
+    return true -- not an armor item, don't restrict
   end
 
   expectedArmorSubclass = expectedArmorSubclass or (Core.playerArmorSubclass and Core.playerArmorSubclass())
@@ -235,13 +281,56 @@ do
 
   -- Exported: Core.chooseForSlot (slot-agnostic; works for jewelry as-is)
   function Core.chooseForSlot(comparer, slotID, expectedArmorSubclass, used)
-    local dbg           = debugf
-    local equipped      = equippedBasics(slotID, comparer)
-    local equippedIlvl  = (equipped and equipped.ilvl) or 0
-    local equippedScore = (equipped and equipped.score) or nil
-    local lowerBound    = JEWELRY[slotID] and LOWER_ILVL_JEWELRY or LOWER_ILVL_ARMOR
+    local dbg                 = debugf
+    local equipped            = equippedBasics(slotID, comparer)
+    local equippedIlvl        = (equipped and equipped.ilvl) or 0
+    local equippedScore       = (equipped and equipped.score) or nil
+    local lowerBound          = JEWELRY[slotID] and LOWER_ILVL_JEWELRY or LOWER_ILVL_ARMOR
 
-    local best          = nil
+    -- Socket potential config (used to estimate whether an item with an empty socket could become an upgrade)
+    local assumedGemSecondary = 10
+    if XIVEquip and XIVEquip.Pawn and type(XIVEquip.Pawn.GetSocketAssumptionSecondaryAmount) == "function" then
+      assumedGemSecondary = tonumber(XIVEquip.Pawn.GetSocketAssumptionSecondaryAmount()) or 10
+    end
+
+    -- Determine the best (highest-weight) secondary stat for the active Pawn scale.
+    -- Returns: bestWeight (number), bestLabel (string)
+    local bestSecondaryWeight, bestSecondaryLabel
+    do
+      local vals
+      if XIVEquip and XIVEquip.Pawn and type(XIVEquip.Pawn.GetBestScaleValuesForPlayer) == "function" then
+        vals = (select(1, XIVEquip.Pawn.GetBestScaleValuesForPlayer()))
+      end
+      if type(vals) == "table" then
+        local c = tonumber(vals.CritRating) or 0
+        local h = tonumber(vals.HasteRating) or 0
+        local m = tonumber(vals.MasteryRating) or 0
+        local v = tonumber(vals.Versatility) or 0
+        bestSecondaryWeight = c
+        bestSecondaryLabel = "Crit"
+        if h > bestSecondaryWeight then bestSecondaryWeight, bestSecondaryLabel = h, "Haste" end
+        if m > bestSecondaryWeight then bestSecondaryWeight, bestSecondaryLabel = m, "Mastery" end
+        if v > bestSecondaryWeight then bestSecondaryWeight, bestSecondaryLabel = v, "Vers" end
+        if bestSecondaryWeight <= 0 then
+          bestSecondaryWeight, bestSecondaryLabel = nil, nil
+        end
+      end
+    end
+
+    local GetItemStatsCompat = GetItemStats or (C_Item and C_Item.GetItemStats)
+    local function countEmptySockets(link)
+      if type(GetItemStatsCompat) ~= "function" or type(link) ~= "string" then return 0 end
+      local ok, st = pcall(GetItemStatsCompat, link)
+      if not ok or type(st) ~= "table" then return 0 end
+      return (tonumber(st.EMPTY_SOCKET_PRISMATIC) or 0)
+          + (tonumber(st.EMPTY_SOCKET_PRISMATIC1) or 0)
+          + (tonumber(st.EMPTY_SOCKET_META) or 0)
+          + (tonumber(st.EMPTY_SOCKET_RED) or 0)
+          + (tonumber(st.EMPTY_SOCKET_BLUE) or 0)
+          + (tonumber(st.EMPTY_SOCKET_YELLOW) or 0)
+    end
+
+    local best = nil
 
     for bag = 0, NUM_BAG_SLOTS do
       local num = C_Container.GetContainerNumSlots(bag) or 0
@@ -311,6 +400,57 @@ do
                       targetSlot = slotID,
                     }
                   end
+
+                  -- 
+                  -- BoE reminder: if item is an upgrade but is Bind-on-Equip and not yet bound,
+                  -- surface a non-debug reminder so the user can confirm binding / equip manually if needed.
+                  if equippedScore ~= nil
+                      and type(score) == "number"
+                      and score > (equippedScore + EPS)
+                  then
+                    local bindType = select(14, GetItemInfo(link))
+                    if bindType == 2 then -- LE_ITEM_BIND_ON_EQUIP
+                      local bound = false
+                      if itemLoc and C_Item and type(C_Item.IsBound) == "function" then
+                        local okB, vB = pcall(C_Item.IsBound, itemLoc)
+                        bound = okB and vB or false
+                      end
+                      if not bound then
+                        local key = guid or (link .. ":" .. tostring(slotID))
+                        Core.AddBoEReminder(key, {
+                          slotID = slotID,
+                          slotName = Core.SLOT_LABEL[slotID] or ("Slot " .. tostring(slotID)),
+                          link = link,
+                        })
+                      end
+                    end
+                  end
+
+	-- Socket potential detection: if item has empty sockets and is not currently an upgrade,
+                  -- estimate whether it could become an upgrade by adding a "baseline" gem.
+                  if equippedScore ~= nil
+                      and bestSecondaryWeight
+                      and type(score) == "number"
+                      and score <= (equippedScore + EPS)
+                  then
+                    local emptySockets = countEmptySockets(link)
+                    if emptySockets and emptySockets > 0 then
+                      local potentialDelta = emptySockets * assumedGemSecondary * bestSecondaryWeight
+                      local potentialScore = score + potentialDelta
+                      if potentialScore > (equippedScore + EPS) then
+                        local key = guid or (link .. ":" .. tostring(slotID))
+                        Core.AddSocketPotential(key, {
+                          slotID = slotID,
+                          slotName = Core.SLOT_LABEL[slotID] or ("Slot " .. tostring(slotID)),
+                          link = link,
+                          emptySockets = emptySockets,
+                          assumedAmount = assumedGemSecondary,
+                          assumedStat = bestSecondaryLabel,
+                          potentialDeltaScore = (potentialScore - equippedScore),
+                        })
+                      end
+                    end
+                  end
                 else
                   if dbg then dbg(slotID, "skip: already used guid=%s link=%s", tostring(guid), tostring(link or "nil")) end
                 end
@@ -320,14 +460,14 @@ do
                     tostring(ilvl or "nil"), tostring(equippedIlvl or "nil"), tostring(lowerBound))
                 end
               end
-            end -- closews the reqLevel gate
+            end -- closes the reqLevel gate
           end
         end
       end
     end
 
 
-    -- Guard: only upgrade if strictly better than what’s on the character.
+    -- Guard: only upgrade if strictly better than what's on the character.
     if best then
       if equippedScore ~= nil then
         if best.score <= (equippedScore + EPS) then
@@ -362,7 +502,7 @@ function Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
   -- Add to plan
   table.insert(plan, pick)
 
-  -- Build the UI change row (exactly the same fields you’re using)
+  -- Build the UI change row (exactly the same fields you're using)
   local oldLink  = (equipped and equipped.link) or "|cff888888(None)|r"
   local newLink  = pick.link or oldLink
   local newScore = tonumber((pick and pick.score)) or 0

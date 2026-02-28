@@ -33,7 +33,7 @@ function C:_saveSpecSetSoon(delay)
     if _pendingSpecSaveToken ~= token then return end
     if InCombatLockdown() then return end
 
-    -- Re-read the *current* spec now (don’t use any captured value)
+    -- Re-read the *current* spec now (don't use any captured value)
     local idx      = GetSpecialization()
     local specName = (idx and select(2, GetSpecializationInfo(idx))) or "Unknown"
     local setName  = string.format("%s.xive", specName)
@@ -68,6 +68,15 @@ end
 function C:PlanBest(cmp, opts)
   opts = opts or {}
 
+  -- Reset per-pass socket potential messages
+  if Core and type(Core.ClearSocketPotential) == "function" then
+    Core.ClearSocketPotential()
+  end
+
+  if Core and type(Core.ClearBoEReminders) == "function" then
+    Core.ClearBoEReminders()
+  end
+
   local used = {}
   local plan, changes = {}, {}
   local hadPending = false
@@ -88,8 +97,24 @@ function C:PlanBest(cmp, opts)
     hadPending = hadPending or (pPending == true)
   end
 
+  -- Capture socket potential records for UI / equip messages
+  C._socketPotential = (Core and type(Core.GetSocketPotential) == "function") and (Core.GetSocketPotential() or {}) or {}
+  C._boeReminders = (Core and type(Core.GetBoEReminders) == "function") and (Core.GetBoEReminders() or {}) or {}
+
+
   return changes, hadPending, plan
 end
+
+-- Public: get socket potential records from the last planning pass
+function C:GetSocketPotential()
+  return C._socketPotential or {}
+end
+
+
+function C:GetBoEReminders()
+  return C._boeReminders or {}
+end
+
 
 -- EquipBest unchanged (no fallback/retry)
 -- [XIVEquip-AUTO] C:EquipBest: Applies equipment changes (gear/weapons) for the addon.
@@ -106,6 +131,23 @@ function C:EquipBest()
   local pendingChecks = 0
 
   local _, _, plan = C:PlanBest(cmp)
+
+  -- Always surface "empty socket could be an upgrade" hints (not debug).
+  do
+    local recs = C:GetSocketPotential() or {}
+    if #recs > 0 then
+      for _, r in ipairs(recs) do
+        local assumed = string.format("+%d %s", tonumber(r.assumedAmount) or 10,
+          tostring(r.assumedStat or "best secondary"))
+        local sockTxt = (tonumber(r.emptySockets) or 1) == 1 and "an empty socket" or
+        (tostring(r.emptySockets) .. " empty sockets")
+        local delta = tonumber(r.potentialDeltaScore) or 0
+        print((L.AddonPrefix or "XIVEquip: ") .. string.format(
+          "%s has %s and could potentially be an upgrade if gemmed (assumes %s): potential %+0.1f score improvement over alternative items.",
+          tostring(r.link or "(item)"), sockTxt, assumed, delta))
+      end
+    end
+  end
 
   if not plan or #plan == 0 then
     if showEquip then
@@ -167,9 +209,40 @@ function C:EquipBest()
     end
 
     local oldLinkRaw = slotID and GetInventoryItemLink("player", slotID) or nil
-
     -- perform equip
+    -- If this is an unbound BoE item, attempting to equip will usually raise a bind confirmation popup.
+    -- We cannot click the confirmation for the player. If the equip doesn't take, emit a message and continue.
+    local wasBoEUnbound = false
+    do
+      local bindType = pickLink and pickLink ~= "" and select(14, GetItemInfo(pickLink)) or nil
+      if bindType == 2 then -- LE_ITEM_BIND_ON_EQUIP
+        local bound = false
+        if pick.loc and C_Item and type(C_Item.IsBound) == "function" then
+          local okB, vB = pcall(C_Item.IsBound, pick.loc)
+          bound = okB and vB or false
+        end
+        wasBoEUnbound = not bound
+      end
+    end
+
     local ok, err = pcall(function() equipByBasics(pick) end)
+
+    if wasBoEUnbound then
+      -- Check whether the intended item is actually equipped; if not, we're likely waiting on the bind popup.
+      local nowLink = slotID and GetInventoryItemLink("player", slotID) or nil
+      local function itemID(link)
+        if type(link) ~= "string" then return nil end
+        return tonumber(link:match("item:(%d+)"))
+      end
+      if itemID(nowLink) ~= itemID(pickLink) then
+        -- IMPORTANT: Do not interrupt the routine. Continue equipping other upgrades.
+        -- Surface a clear message so the user can click the bind prompt and then manually equip (or rerun /xivequip).
+        print((L.AddonPrefix or "XIVEquip: ") .. string.format(
+          "%s is Bind on Equip and requires a confirmation click to equip. Click the bind prompt, then click the item (or rerun /xivequip).",
+          tostring(pickLink or "(item)")))
+        if ClearCursor then ClearCursor() end
+      end
+    end
 
     pendingChecks = pendingChecks + 1
     local pendingId = i -- correlate verify to pick index

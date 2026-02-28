@@ -326,8 +326,10 @@ C.RegisterRoot("score", function(rest)
 
   -- Otherwise: Pawn auto / active comparer / ilvl fallback
   if XIVEquip.Pawn and type(XIVEquip.Pawn.ScoreItemLink) == "function" then
-    local v, src = XIVEquip.Pawn.ScoreItemLink(link); if v then
-      print(PREFIX .. ("Score: %.2f (%s)"):format(v, src or "Pawn")); return
+    local v, _, entry = XIVEquip.Pawn.ScoreItemLink(link)
+    if v then
+      local scaleName = (entry and (entry.name or entry.key)) or "Pawn"
+      print(PREFIX .. ("Score: %.2f (%s)"):format(v, scaleName)); return
     end
   elseif type(XIVEquip.PawnScoreLinkAuto) == "function" then
     local v, src = XIVEquip.PawnScoreLinkAuto(link); if v then

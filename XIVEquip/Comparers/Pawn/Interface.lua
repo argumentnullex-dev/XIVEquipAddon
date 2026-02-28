@@ -162,6 +162,88 @@ local function GetItemStatsCompat(itemLink)
 	return nil
 end
 
+-- AddSocketedGemStatsFromTooltip: Reads the parent item's tooltip and adds gem (or other "extra") secondary stats
+-- by computing (tooltip total) - (base GetItemStats value). This avoids double-counting base stats.
+local function AddSocketedGemStatsFromTooltip(stats, itemLink)
+	if type(stats) ~= "table" or type(itemLink) ~= "string" then return end
+	if not C_TooltipInfo or type(C_TooltipInfo.GetHyperlink) ~= "function" then return end
+
+	-- Helper: escape magic characters for Lua patterns
+	local function escapePattern(s)
+		return (s:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"))
+	end
+
+	-- Build label->statKey map using whatever globals exist in this client.
+	-- Important: prefer SHORT keys when available so we match what GetItemStats tends to populate.
+	local labelToStatKey = {}
+
+	-- Crit
+	if _G.ITEM_MOD_CRIT_RATING_SHORT then labelToStatKey[_G.ITEM_MOD_CRIT_RATING_SHORT] = "ITEM_MOD_CRIT_RATING_SHORT" end
+	if _G.ITEM_MOD_CRIT_RATING then
+		labelToStatKey[_G.ITEM_MOD_CRIT_RATING] = labelToStatKey[_G.ITEM_MOD_CRIT_RATING] or "ITEM_MOD_CRIT_RATING"
+	end
+
+	-- Haste
+	if _G.ITEM_MOD_HASTE_RATING_SHORT then labelToStatKey[_G.ITEM_MOD_HASTE_RATING_SHORT] = "ITEM_MOD_HASTE_RATING_SHORT" end
+	if _G.ITEM_MOD_HASTE_RATING then
+		labelToStatKey[_G.ITEM_MOD_HASTE_RATING] = labelToStatKey[_G.ITEM_MOD_HASTE_RATING] or "ITEM_MOD_HASTE_RATING"
+	end
+
+	-- Mastery
+	if _G.ITEM_MOD_MASTERY_RATING_SHORT then labelToStatKey[_G.ITEM_MOD_MASTERY_RATING_SHORT] =
+		"ITEM_MOD_MASTERY_RATING_SHORT" end
+	if _G.ITEM_MOD_MASTERY_RATING then
+		labelToStatKey[_G.ITEM_MOD_MASTERY_RATING] = labelToStatKey[_G.ITEM_MOD_MASTERY_RATING] or
+		"ITEM_MOD_MASTERY_RATING"
+	end
+
+	-- Versatility
+	if _G.ITEM_MOD_VERSATILITY_SHORT then labelToStatKey[_G.ITEM_MOD_VERSATILITY_SHORT] = "ITEM_MOD_VERSATILITY_SHORT" end
+	if _G.ITEM_MOD_VERSATILITY then
+		labelToStatKey[_G.ITEM_MOD_VERSATILITY] = labelToStatKey[_G.ITEM_MOD_VERSATILITY] or "ITEM_MOD_VERSATILITY"
+	end
+
+	if next(labelToStatKey) == nil then return end
+
+	local tip = C_TooltipInfo.GetHyperlink(itemLink)
+	if type(tip) ~= "table" or type(tip.lines) ~= "table" then return end
+
+	-- 1) Accumulate tooltip totals per statKey
+	local totals = {}
+	for _, line in ipairs(tip.lines) do
+		local text = line and line.leftText
+		if type(text) == "string" and text:find("%+") then
+			-- We intentionally do NOT require a "Socketed:" prefix (it's often not present in C_TooltipInfo text)
+			for label, statKey in pairs(labelToStatKey) do
+				-- Match "+<number> <label>" anywhere in the line
+				local pattern = "%+%s*(%d+)%s*" .. escapePattern(label)
+				local amtStr = text:match(pattern)
+				local amt = tonumber(amtStr)
+				if amt and amt > 0 then
+					totals[statKey] = (totals[statKey] or 0) + amt
+				end
+			end
+		end
+	end
+
+	-- 2) Add only the delta over base stats (prevents doubling)
+	-- Also dedupe statKeys in case both LONG and SHORT labels map to different keys.
+	local seenStatKey = {}
+	for _, statKey in pairs(labelToStatKey) do
+		if not seenStatKey[statKey] then
+			seenStatKey[statKey] = true
+
+			local t = totals[statKey] or 0
+			local base = stats[statKey] or 0
+			local extra = t - base
+
+			if extra > 0 then
+				stats[statKey] = base + extra
+			end
+		end
+	end
+end
+
 -- Parse tooltip to extract min/max damage and speed (Retail DF)
 -- [XIVEquip-AUTO] GetWeaponDamageAndSpeed: Returns weapon damage and speed.
 local function GetWeaponDamageAndSpeed(link)
@@ -193,6 +275,10 @@ local function computeScoreFromValues(itemLink, values, slot)
 	if not itemLink or type(values) ~= "table" then return nil end
 	local stats = GetItemStatsCompat(itemLink)
 	if type(stats) ~= "table" then return nil end
+
+	-- Add stats from socketed gems (tooltip-based; localized; synchronous)
+	AddSocketedGemStatsFromTooltip(stats, itemLink)
+
 	local dbgslot = slot or "force"
 	if _debugEnabled() then
 		local parts = {}
@@ -333,6 +419,38 @@ local function chooseBestActiveScaleForPlayer()
 		end
 	end
 	return firstByClass or act[1]
+end
+
+-- Public: expose the chosen active scale entry (used by other modules).
+function Pawn.GetBestActiveScaleForPlayer()
+  return chooseBestActiveScaleForPlayer()
+end
+
+-- Public: get the values table for the chosen active scale.
+-- Returns: valuesTable|nil, scaleEntry|nil
+function Pawn.GetBestScaleValuesForPlayer()
+  local entry = chooseBestActiveScaleForPlayer()
+  if not entry then return nil, nil end
+  if entry.type == "custom" and type(entry.values) == "table" then
+    return entry.values, entry
+  end
+  -- provider: try API values
+  local keyOrName = entry.key or entry.name
+  local vals = tryGetProviderValues(keyOrName)
+  if type(vals) == "table" then
+    return vals, entry
+  end
+  return nil, entry
+end
+
+-- Public: baseline assumption for "what is a gem worth" when estimating empty-socket potential.
+-- User configurable via XIVEquip_Settings.SocketAssumption.SecondaryAmount.
+function Pawn.GetSocketAssumptionSecondaryAmount()
+  local s = _G.XIVEquip_Settings
+  local v = s and s.SocketAssumption and s.SocketAssumption.SecondaryAmount
+  v = tonumber(v)
+  if v and v > 0 then return v end
+  return 10
 end
 
 -- Public scorer: score by link using the chosen active scale

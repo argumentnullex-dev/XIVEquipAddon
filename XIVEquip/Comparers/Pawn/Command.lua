@@ -119,8 +119,9 @@ Cmd.RegisterNamespace("pawn", function(rest)
     end
 
     if XIVEquip.Pawn and XIVEquip.Pawn.ScoreItemLink then
-      local v, src = XIVEquip.Pawn.ScoreItemLink(link)
-      print(string.format("  Score: %.2f (%s)", tonumber(v) or 0, src or "pawn"))
+      local v, _, entry = XIVEquip.Pawn.ScoreItemLink(link)
+      local scaleName = (entry and (entry.name or entry.key)) or "Pawn"
+      print(string.format("  Score: %.2f (%s)", tonumber(v) or 0, scaleName))
     else
       print("  Pawn scoring not available.")
     end
