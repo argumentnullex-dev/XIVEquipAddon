@@ -366,24 +366,26 @@ local function createButton()
       GameTooltip:AddLine(" ")
       GameTooltip:AddLine("|cffddddddPotential socket upgrades|r")
       for _, r in ipairs(potentials) do
-        local assumed = string.format("+%d %s", tonumber(r.assumedAmount) or 10, tostring(r.assumedStat or "best secondary"))
+        local assumed = string.format("+%d %s", tonumber(r.assumedAmount) or 10,
+          tostring(r.assumedStat or "best secondary"))
         local delta = tonumber(r.potentialDeltaScore) or 0
-        GameTooltip:AddLine(string.format("  %s |cffaaaaaa(%s, potential %+0.1f score)|r", tostring(r.link or ""), assumed, delta))
+        GameTooltip:AddLine(string.format("  %s |cffaaaaaa(%s, potential %+0.1f score)|r", tostring(r.link or ""),
+          assumed, delta))
       end
     end
 
-    
+
     -- BoE reminders (append after socket hints, at very bottom)
     local boes = (XIVEquip.Gear and XIVEquip.Gear.GetBoEReminders and XIVEquip.Gear:GetBoEReminders()) or {}
     if type(boes) == "table" and #boes > 0 then
       GameTooltip:AddLine(" ")
       GameTooltip:AddLine("|cffddddddBind-on-Equip reminders|r")
       for _, r in ipairs(boes) do
-        GameTooltip:AddLine(string.format("  %s |cffffaa66([BoE] click bind prompt to equip)|r", tostring(r.link or "")))
+        GameTooltip:AddLine(string.format("  %s |cffffaa66([BoE] equip the piece manually)|r", tostring(r.link or "")))
       end
     end
 
-GameTooltip:Show()
+    GameTooltip:Show()
   end)
 
   -- Callback used in UI.lua to run inline logic.

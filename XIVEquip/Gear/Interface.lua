@@ -110,11 +110,9 @@ function C:GetSocketPotential()
   return C._socketPotential or {}
 end
 
-
 function C:GetBoEReminders()
   return C._boeReminders or {}
 end
-
 
 -- EquipBest unchanged (no fallback/retry)
 -- [XIVEquip-AUTO] C:EquipBest: Applies equipment changes (gear/weapons) for the addon.
@@ -140,7 +138,7 @@ function C:EquipBest()
         local assumed = string.format("+%d %s", tonumber(r.assumedAmount) or 10,
           tostring(r.assumedStat or "best secondary"))
         local sockTxt = (tonumber(r.emptySockets) or 1) == 1 and "an empty socket" or
-        (tostring(r.emptySockets) .. " empty sockets")
+            (tostring(r.emptySockets) .. " empty sockets")
         local delta = tonumber(r.potentialDeltaScore) or 0
         print((L.AddonPrefix or "XIVEquip: ") .. string.format(
           "%s has %s and could potentially be an upgrade if gemmed (assumes %s): potential %+0.1f score improvement over alternative items.",
@@ -236,9 +234,9 @@ function C:EquipBest()
       end
       if itemID(nowLink) ~= itemID(pickLink) then
         -- IMPORTANT: Do not interrupt the routine. Continue equipping other upgrades.
-        -- Surface a clear message so the user can click the bind prompt and then manually equip (or rerun /xivequip).
+        -- Surface a clear message so the user can equip manually.
         print((L.AddonPrefix or "XIVEquip: ") .. string.format(
-          "%s is Bind on Equip and requires a confirmation click to equip. Click the bind prompt, then click the item (or rerun /xivequip).",
+          "%s is Bind on Equip and must be equipped manually.",
           tostring(pickLink or "(item)")))
         if ClearCursor then ClearCursor() end
       end

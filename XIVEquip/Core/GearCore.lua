@@ -28,29 +28,6 @@ function Core.GetSocketPotential()
   return Core._socketPotential or {}
 end
 
-
--- =========================
--- BoE reminders (Bind-on-Equip items that require a confirmation click to equip)
--- =========================
-function Core.ClearBoEReminders()
-  Core._boeReminders = {}
-  Core._boeRemindersSeen = {}
-end
-
-function Core.AddBoEReminder(key, record)
-  if not key or not record then return end
-  if Core._boeRemindersSeen and Core._boeRemindersSeen[key] then return end
-  Core._boeRemindersSeen = Core._boeRemindersSeen or {}
-  Core._boeRemindersSeen[key] = true
-  Core._boeReminders = Core._boeReminders or {}
-  table.insert(Core._boeReminders, record)
-end
-
-function Core.GetBoEReminders()
-  return Core._boeReminders or {}
-end
-
-
 -- =========================
 -- Public constants/lookups (unchanged)
 -- =========================
@@ -233,7 +210,7 @@ function Core.playerArmorSubclass()
   return map[class]
 end
 
--- Checks if the given item is valid armor type for the player's class
+-- Checks if the given item is valid armor type for the player’s class
 -- jewelry and cloaks are always valid
 -- [XIVEquip-AUTO] Core.equipIsValidArmorType: Applies equipment changes (gear/weapons) for the addon.
 function Core.equipIsValidArmorType(itemID, slotID, expectedArmorSubclass)
@@ -250,7 +227,7 @@ function Core.equipIsValidArmorType(itemID, slotID, expectedArmorSubclass)
   end
 
   if classID ~= Core.ITEMCLASS_ARMOR then
-    return true -- not an armor item, don't restrict
+    return true -- not an armor item, don’t restrict
   end
 
   expectedArmorSubclass = expectedArmorSubclass or (Core.playerArmorSubclass and Core.playerArmorSubclass())
@@ -318,16 +295,49 @@ do
     end
 
     local GetItemStatsCompat = GetItemStats or (C_Item and C_Item.GetItemStats)
+
+    -- Count how many gems are already socketed on this specific item link.
+    -- ItemString fields: itemID:enchant:gem1:gem2:gem3:gem4:...
+    local function countSocketedGems(link)
+      if type(link) ~= "string" then return 0 end
+      local itemString = link:match("item:([-%d:]+)")
+      if not itemString then return 0 end
+
+      local fields = {}
+      -- preserve empty fields
+      for part in (itemString .. ":"):gmatch("([^:]*):") do
+        fields[#fields + 1] = part
+      end
+
+      local filled = 0
+      for i = 3, 6 do -- gem1..gem4
+        local id = tonumber(fields[i] or "0") or 0
+        if id > 0 then filled = filled + 1 end
+      end
+      return filled
+    end
+
+    -- "EMPTY_SOCKET_*" stats from GetItemStats indicate the presence of sockets,
+    -- not whether they are unfilled. Translate into true empty sockets by
+    -- subtracting the number of already-socketed gems.
     local function countEmptySockets(link)
       if type(GetItemStatsCompat) ~= "function" or type(link) ~= "string" then return 0 end
       local ok, st = pcall(GetItemStatsCompat, link)
       if not ok or type(st) ~= "table" then return 0 end
-      return (tonumber(st.EMPTY_SOCKET_PRISMATIC) or 0)
+
+      local sockets = (tonumber(st.EMPTY_SOCKET_PRISMATIC) or 0)
           + (tonumber(st.EMPTY_SOCKET_PRISMATIC1) or 0)
           + (tonumber(st.EMPTY_SOCKET_META) or 0)
           + (tonumber(st.EMPTY_SOCKET_RED) or 0)
           + (tonumber(st.EMPTY_SOCKET_BLUE) or 0)
           + (tonumber(st.EMPTY_SOCKET_YELLOW) or 0)
+
+      if sockets <= 0 then return 0 end
+
+      local filled = countSocketedGems(link)
+      local empty = sockets - filled
+      if empty < 0 then empty = 0 end
+      return empty
     end
 
     local best = nil
@@ -401,32 +411,7 @@ do
                     }
                   end
 
-                  -- 
-                  -- BoE reminder: if item is an upgrade but is Bind-on-Equip and not yet bound,
-                  -- surface a non-debug reminder so the user can confirm binding / equip manually if needed.
-                  if equippedScore ~= nil
-                      and type(score) == "number"
-                      and score > (equippedScore + EPS)
-                  then
-                    local bindType = select(14, GetItemInfo(link))
-                    if bindType == 2 then -- LE_ITEM_BIND_ON_EQUIP
-                      local bound = false
-                      if itemLoc and C_Item and type(C_Item.IsBound) == "function" then
-                        local okB, vB = pcall(C_Item.IsBound, itemLoc)
-                        bound = okB and vB or false
-                      end
-                      if not bound then
-                        local key = guid or (link .. ":" .. tostring(slotID))
-                        Core.AddBoEReminder(key, {
-                          slotID = slotID,
-                          slotName = Core.SLOT_LABEL[slotID] or ("Slot " .. tostring(slotID)),
-                          link = link,
-                        })
-                      end
-                    end
-                  end
-
-	-- Socket potential detection: if item has empty sockets and is not currently an upgrade,
+                  -- Socket potential detection: if item has empty sockets and is not currently an upgrade,
                   -- estimate whether it could become an upgrade by adding a "baseline" gem.
                   if equippedScore ~= nil
                       and bestSecondaryWeight
@@ -467,7 +452,7 @@ do
     end
 
 
-    -- Guard: only upgrade if strictly better than what's on the character.
+    -- Guard: only upgrade if strictly better than what’s on the character.
     if best then
       if equippedScore ~= nil then
         if best.score <= (equippedScore + EPS) then
@@ -502,7 +487,7 @@ function Core.appendPlanAndChange(plan, changes, slotID, pick, equipped)
   -- Add to plan
   table.insert(plan, pick)
 
-  -- Build the UI change row (exactly the same fields you're using)
+  -- Build the UI change row (exactly the same fields you’re using)
   local oldLink  = (equipped and equipped.link) or "|cff888888(None)|r"
   local newLink  = pick.link or oldLink
   local newScore = tonumber((pick and pick.score)) or 0
